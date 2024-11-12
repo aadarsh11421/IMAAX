@@ -1,7 +1,4 @@
 # IMAAX
-Foundations of Spatial Data Science Assessment
+Foundations of Spatial Data Science Assessment -  Inside AirBnB
 
-Aadarsh Ajikumar
-Abdulnasir Ibrahim
-Miaoyi Li
-Idris Baba
+Group members: Aadarsh Ajikumar, Abdulnasir Ibrahim, Miaoyi Li, Idris Baba
