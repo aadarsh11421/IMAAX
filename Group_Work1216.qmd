@@ -1,7 +1,7 @@
 ---
 bibliography: bio.bib
 csl: harvard-cite-them-right.csl
-title: IMAAX
+title: IMAAX Group Project
 execute:
   echo: false
   freeze: true
@@ -40,9 +40,9 @@ jupyter:
       format_version: '1.0'
       jupytext_version: 1.16.4
   kernelspec:
-    display_name: Python (base)
+    display_name: Python 3 (ipykernel)
     language: python
-    name: base
+    name: python3
 ---
 
 ```{python}
@@ -61,7 +61,6 @@ import matplotlib.font_manager
 
 from requests import get
 from urllib.parse import urlparse
-
 ```
 
 ```{python}
@@ -98,7 +97,6 @@ def cache_data(src: str, dest: str) -> str:
             file.write(response.content)
 
     return dfn
-
 ```
 
 ```{python}
@@ -146,23 +144,18 @@ road =  gpd.read_file( cache_data(spath+'Roads.gpkg?raw=true', ddir) )
 
 #choose cols needed for analysis
 
-cols = ['id', 'listing_url', 'host_id', 
-        'host_name', 'host_since', 'host_location', 'host_about', 'host_is_superhost', 
-        'host_listings_count', 'host_total_listings_count', 
-        'latitude', 'longitude', 'neighbourhood_cleansed', 'property_type', 'room_type', 'accommodates', 
-        'bathrooms', 'bathrooms_text', 'bedrooms', 'beds', 'amenities', 'price', 
-        'minimum_nights', 'maximum_nights', 'minimum_minimum_nights',
-    'maximum_minimum_nights',
-    'minimum_maximum_nights',
-    'maximum_maximum_nights',
-    'minimum_nights_avg_ntm',
-    'maximum_nights_avg_ntm',
-        'availability_365', 'number_of_reviews', 
-        'calculated_host_listings_count', 'calculated_host_listings_count_entire_homes',
-        'calculated_host_listings_count_entire_homes', 'calculated_host_listings_count_shared_rooms',
-        'review_scores_rating', 
-        'reviews_per_month']
-#print(f"Cols contains {len(cols)} columns.")
+
+# Select relevant columns
+cols = [
+    'id', 'listing_url', 'last_scraped', 'name', 'description', 'host_id', 'host_name', 
+    'host_since', 'host_location', 'host_about', 'host_acceptance_rate', 
+    'host_is_superhost', 'host_neighbourhood', 'host_listings_count', 
+    'host_total_listings_count', 'host_verifications', 'latitude', 'longitude',
+    'property_type', 'room_type', 'accommodates', 'bathrooms', 'bathrooms_text', 
+    'bedrooms', 'beds', 'amenities', 'price', 'minimum_nights', 'maximum_nights','minimum_minimum_nights',
+    'maximum_minimum_nights', 'minimum_maximum_nights', 'maximum_maximum_nights', 'minimum_nights_avg_ntm', 'maximum_nights_avg_ntm', 'availability_365', 'number_of_reviews', 'first_review', 'last_review', 
+    'review_scores_rating', 'reviews_per_month'
+]
 ```
 
 ```{python}
@@ -187,15 +180,6 @@ else:
 #| echo: false
 
 
-## check data before clean
-
-#print(df.columns.to_list())
-```
-
-```{python}
-#| echo: false
-
-
 #get a summary table of Na in each column
 na_counts = df.isnull().sum()
 na_percentage = (df.isnull().mean() * 100).round(2)
@@ -206,8 +190,6 @@ na_summary = na_summary[na_summary['Missing Count'] > 0].sort_values(by='Missing
 
 #print(na_summary)
 ```
-
-
 
 ```{python}
 #| echo: false
@@ -289,36 +271,6 @@ for m in money:
 ```{python}
 #| echo: false
 
-
-
-# convert int
-int64_columns = df.select_dtypes(include=['int64']).columns
-
-#print("Columns with dtype int64:")
-#print(int64_columns)
-
-ints  = ['id', 'host_id', 'host_listings_count', 'host_total_listings_count',
-       'accommodates', 'minimum_nights', 'maximum_nights', 'availability_365',
-       'number_of_reviews', 'calculated_host_listings_count',
-       'calculated_host_listings_count_entire_homes',
-       'calculated_host_listings_count_shared_rooms']
-for i in ints:
-    #print(f"Converting {i}")
-    try:
-        df[i] = df[i].astype('float').astype('int')
-    except ValueError as e:
-        #print("  - !!!Converting to unsigned 16-bit integer!!!")
-        df[i] = df[i].astype('float').astype(pd.UInt16Dtype())
-        
-        
-#check Na NaN
-nan_counts = df[ints].isna().sum()
-#print(nan_counts)
-```
-
-```{python}
-#| echo: false
-
 # save data
 
 path = os.path.join('data','clean')
@@ -353,18 +305,13 @@ if not os.path.exists(file_path):
         gdf.to_file(file_path, driver='GPKG')
     except TypeError as e:
         pass  # Handle error silently or log it using a logging library if needed
-
 ```
 
 ```{python}
 #| echo: false
 
 # download   bio.bib  + csl form github
-
-
-
 ```
-
 
 ## 1. Who collected the InsideAirbnb data?
 
@@ -424,7 +371,6 @@ The proportion bar chart of London's Airbnb listings below reveals a potentially
 The booking patterns across all property types suggest a trend of professionalized approach to short-term rentals. Most properties show availability for booking 90-270 days into the future, indicating that hosts tend to plan their rental calendars far in advance. This long-term availability pattern is noteworthy - it suggests these properties might be primarily investment assets rather than primary residences, as ordinary homeowners would likely struggle to plan their personal space use so far ahead. However, it's also possible that some hosts can arrange their listings months in advance due to stable life and work schedules, and plan the use of spare rooms ahead of time. Further data is needed to validate this speculation.
 
 The maximum stay duration suggests entire homes/apartments are targeting longer-term guests, while shared rooms and private rooms are targeting short-term guests. This could be a result of professional property management strategies, but it might also be partially due to the space limitations of shared and private rooms, which are less suitable for long-term rentals.
-
 
 ```{python}
 #| echo: false
@@ -581,6 +527,37 @@ plt.savefig('room_type_analysis.png',
 
 
 plt.show()
+```
+
+```{python}
+import plotly.express as px
+import contextily as ctx
+
+# Drop rows with missing price values
+df = df.dropna(subset=['price'])
+
+# Create the scatter mapbox plot
+fig = px.scatter_mapbox(
+    df,
+    lon=df['longitude'],
+    lat=df['latitude'],
+    color=df['property_type'],  # Color markers by property type
+    size=df['price'],  # Size markers by price
+    hover_name=df['name'],
+    hover_data={'price': True, 'availability_365': True, 'host_neighbourhood': True},
+    zoom=10,
+    height=900,
+    title='Airbnb Listings in London'
+)
+
+# Update layout to use Stamen Toner style (black and white)
+fig.update_layout(mapbox_style="carto-positron")
+
+# Customize margins
+fig.update_layout(margin={"r":0, "t":50, "l":0, "b":10})
+
+# Show the plot
+fig.show()
 ```
 
 :::
