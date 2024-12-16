@@ -1,0 +1,604 @@
+---
+bibliography: bio.bib
+csl: harvard-cite-them-right.csl
+title: IMAAX
+execute:
+  echo: false
+  freeze: true
+format:
+  html:
+    code-copy: true
+    code-link: true
+    toc: true
+    toc-title: On this page
+    toc-depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+  pdf:
+    include-in-header:
+      text: |
+        \addtokomafont{disposition}{\rmfamily}
+    mainfont: Spectral
+    sansfont: Roboto Flex
+    monofont: Liberation Mono
+    geometry:
+      - top=25mm
+      - left=40mm
+      - right=30mm
+      - bottom=25mm
+      - heightrounded
+    toc: false
+    number-sections: false
+    colorlinks: true
+    highlight-style: github
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: '1.0'
+      jupytext_version: 1.16.4
+  kernelspec:
+    display_name: Python (base)
+    language: python
+    name: base
+---
+
+```{python}
+#| echo: false
+
+
+import os
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+
+import matplotlib
+import matplotlib.font_manager
+
+from requests import get
+from urllib.parse import urlparse
+
+```
+
+```{python}
+#| echo: false
+
+from urllib.parse import urlparse
+import os
+from requests import get
+
+def cache_data(src: str, dest: str) -> str:
+    """
+    Downloads and caches a file from the given URL if it does not already exist locally 
+    or if the cached file is smaller than 250 bytes.
+
+    Args:
+        src (str): The source URL to download the file from.
+        dest (str): The destination directory where the file should be stored.
+
+    Returns:
+        str: The full path to the cached or downloaded file.
+    """
+    url = urlparse(src)  # Parse the URL
+    fn = os.path.split(url.path)[-1]  # Extract the filename
+    dfn = os.path.join(dest, fn)  # Destination filename
+
+    if not os.path.isfile(dfn) or os.path.getsize(dfn) < 250:
+        path = os.path.split(dest)
+
+        if len(path) >= 1 and path[0] != '':
+            os.makedirs(os.path.join(*path), exist_ok=True)
+            
+        with open(dfn, "wb") as file:  # Write in binary
+            response = get(src)
+            file.write(response.content)
+
+    return dfn
+
+```
+
+```{python}
+#| echo: false
+
+
+# load listing data
+
+# Set download URL
+ymd  = '20240614'
+city = 'London'
+host = 'https://orca.casa.ucl.ac.uk'
+url  = f'{host}/~jreades/data/{ymd}-{city}-listings.csv.gz'
+
+#download it locally if not exist
+
+path = os.path.join('data','raw') 
+fn   = url.split('/')[-1]         
+#print(f"Writing to: {fn}")
+
+df = pd.read_csv(cache_data(url, os.path.join('data','raw')))
+#print(f"Data frame is {df.shape[0]:,} x {df.shape[1]}")
+```
+
+```{python}
+#| echo: false
+#| results: hide
+
+# geo data download
+ddir  = os.path.join('data','geo') # destination directory
+spath = 'https://github.com/jreades/i2p/blob/master/data/src/' # source path
+
+boros = gpd.read_file( cache_data(spath+'Boroughs.gpkg?raw=true', ddir) )
+water = gpd.read_file( cache_data(spath+'Water.gpkg?raw=true', ddir) )
+green = gpd.read_file( cache_data(spath+'Greenspace.gpkg?raw=true', ddir) )
+road =  gpd.read_file( cache_data(spath+'Roads.gpkg?raw=true', ddir) )
+#print('Done.')
+```
+
+```{python}
+#| echo: false
+
+# airbnb listing
+#df.info()
+
+#choose cols needed for analysis
+
+cols = ['id', 'listing_url', 'host_id', 
+        'host_name', 'host_since', 'host_location', 'host_about', 'host_is_superhost', 
+        'host_listings_count', 'host_total_listings_count', 
+        'latitude', 'longitude', 'neighbourhood_cleansed', 'property_type', 'room_type', 'accommodates', 
+        'bathrooms', 'bathrooms_text', 'bedrooms', 'beds', 'amenities', 'price', 
+        'minimum_nights', 'maximum_nights', 'minimum_minimum_nights',
+    'maximum_minimum_nights',
+    'minimum_maximum_nights',
+    'maximum_maximum_nights',
+    'minimum_nights_avg_ntm',
+    'maximum_nights_avg_ntm',
+        'availability_365', 'number_of_reviews', 
+        'calculated_host_listings_count', 'calculated_host_listings_count_entire_homes',
+        'calculated_host_listings_count_entire_homes', 'calculated_host_listings_count_shared_rooms',
+        'review_scores_rating', 
+        'reviews_per_month']
+#print(f"Cols contains {len(cols)} columns.")
+```
+
+```{python}
+#| echo: false
+
+
+# testing bottom and cols subset
+testing = False
+
+
+if testing:
+    df = pd.read_csv(os.path.join(path,fn), 
+                low_memory=False, nrows=10000, usecols=cols)
+else:
+    df = pd.read_csv(os.path.join(path,fn), 
+                low_memory=False, usecols=cols)
+
+#print(f"Data frame is {df.shape[0]:,} x {df.shape[1]}")
+```
+
+```{python}
+#| echo: false
+
+
+## check data before clean
+
+#print(df.columns.to_list())
+```
+
+```{python}
+#| echo: false
+
+
+#get a summary table of Na in each column
+na_counts = df.isnull().sum()
+na_percentage = (df.isnull().mean() * 100).round(2)
+
+na_summary = pd.DataFrame({'Missing Count': na_counts, 'Missing Percentage': na_percentage})
+
+na_summary = na_summary[na_summary['Missing Count'] > 0].sort_values(by='Missing Percentage', ascending=False)
+
+#print(na_summary)
+```
+
+
+
+```{python}
+#| echo: false
+#| results: hide
+# store these ro#| ws to drop problem rows(with to many NA)
+probs = df.isnull().sum(axis=1)
+#print(type(probs))       
+cutoff = 5
+df.drop(probs[probs > cutoff].index, inplace=True)
+#print(f"Have reduced data frame to: {df.shape[0]:,} rows and {df.shape[1]:,} columns")
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be bool but show object
+bools = ['host_is_superhost']
+df.sample(5, random_state=43)[bools]
+# map 't' and 'f' to True and False
+for b in bools:
+    #print(f"Converting {b}")
+    df[b] = df[b].replace({'f':False, 't':True}).astype('bool')
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be date but show object
+dates = ['host_since']
+#print(f"Currently {dates[0]} is of type '{df[dates[0]].dtype}'", "\n")
+df.sample(5, random_state=43)[dates]
+
+for d in dates:
+    #print("Converting " + d)
+    df[d] = pd.to_datetime(df[d])
+#print(f"Now {dates[0]} is of type '{df[dates[0]].dtype}'", "\n")
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be cats but show object
+cats = ['property_type','room_type']
+
+#print(f"Currently {cats[1]} is of type '{df[cats[1]].dtype}'", "\n")
+#df.sample(5, random_state=42)[cats]
+```
+
+```{python}
+#| echo: false
+
+
+# see unique value in cols and frequency
+#print(df[cats[0]].value_counts())
+#print(df[cats[1]].value_counts())
+
+# convert dtype
+for c in cats:
+    #print(f"Converting {c}")
+    df[c] = df[c].astype('category')
+```
+
+```{python}
+#| echo: false
+
+
+# convert object has numeric meaning 
+money = ['price']
+#df.sample(5, random_state=43)[money]
+
+for m in money:
+    #print(f"Converting {m}")
+    df[m] = df[m].str.replace('$','', regex=False).str.replace(',','').astype('float')
+```
+
+```{python}
+#| echo: false
+
+
+
+# convert int
+int64_columns = df.select_dtypes(include=['int64']).columns
+
+#print("Columns with dtype int64:")
+#print(int64_columns)
+
+ints  = ['id', 'host_id', 'host_listings_count', 'host_total_listings_count',
+       'accommodates', 'minimum_nights', 'maximum_nights', 'availability_365',
+       'number_of_reviews', 'calculated_host_listings_count',
+       'calculated_host_listings_count_entire_homes',
+       'calculated_host_listings_count_shared_rooms']
+for i in ints:
+    #print(f"Converting {i}")
+    try:
+        df[i] = df[i].astype('float').astype('int')
+    except ValueError as e:
+        #print("  - !!!Converting to unsigned 16-bit integer!!!")
+        df[i] = df[i].astype('float').astype(pd.UInt16Dtype())
+        
+        
+#check Na NaN
+nan_counts = df[ints].isna().sum()
+#print(nan_counts)
+```
+
+```{python}
+#| echo: false
+
+# save data
+
+path = os.path.join('data','clean')
+
+if not os.path.exists(path):
+    #print(f"Creating {path} under {os.getcwd()}")
+    os.makedirs(path)
+    
+df.to_csv(os.path.join(path,fn), index=False)
+#print("Done.")
+```
+
+```{python}
+#| echo: false
+
+# get geo version of df
+# get listing data cleaned
+df = pd.read_csv("data/clean/20240614-London-listings.csv.gz")
+
+# get the gdf of listing data
+gdf = gpd.GeoDataFrame(df,
+      geometry=gpd.points_from_xy(df.longitude, df.latitude, crs='epsg:4326'))
+      
+# save the gdf version of listing data
+gdf = gdf.to_crs(epsg=27700)
+
+fn = "20240614-listings.gpkg"
+file_path = os.path.join('data', 'geo', fn)
+
+if not os.path.exists(file_path):
+    try:
+        gdf.to_file(file_path, driver='GPKG')
+    except TypeError as e:
+        pass  # Handle error silently or log it using a logging library if needed
+
+```
+
+```{python}
+#| echo: false
+
+# download   bio.bib  + csl form github
+
+
+
+```
+
+
+## 1. Who collected the InsideAirbnb data?
+
+::: {.duedate}
+
+Answer
+
+:::
+
+An inline citation example: As discussed on @coxHowAirbnbsData, there are many...
+
+A parenthetical citation example: There are many ways to research Airbnb [see, for example, @coxHowAirbnbsData,]... 
+
+## 2. Why did they collect the InsideAirbnb data?
+
+::: {.duedate}
+
+
+
+:::
+
+
+
+
+
+## 3. How was the InsideAirbnb data collected?  
+
+::: {.duedate}
+
+
+
+:::
+
+## 4. How does the method of collection impact the completeness and/or accuracy of the InsideAirbnb data set's representation of the process it seeks to study, and what wider issues does this raise?
+
+::: {.duedate}
+
+
+
+:::
+
+## 5. What ethical considerations does the use of the InsideAirbnb data raise? 
+
+::: {.duedate}
+
+
+
+:::
+
+## 6. With reference to the InsideAirbnb data (*i.e.* using numbers, figures, maps, and descriptive statistics), what does an analysis of Hosts and Listing types suggest about the nature of Airbnb lets in London? 
+
+::: {.duedate}
+
+### 6.1 Airbnb: Moving Beyond Home Sharing?
+The proportion bar chart of London's Airbnb listings below reveals a potentially significant shift from its original home-sharing concept toward a more commercialized short-term rental market. Entire homes and apartments dominate the market, accounting for over 60% of all listings, while private rooms make up about 35%, leaving shared rooms and hotel rooms as minor segments at roughly 5% combined.
+
+The booking patterns across all property types suggest a trend of professionalized approach to short-term rentals. Most properties show availability for booking 90-270 days into the future, indicating that hosts tend to plan their rental calendars far in advance. This long-term availability pattern is noteworthy - it suggests these properties might be primarily investment assets rather than primary residences, as ordinary homeowners would likely struggle to plan their personal space use so far ahead. However, it's also possible that some hosts can arrange their listings months in advance due to stable life and work schedules, and plan the use of spare rooms ahead of time. Further data is needed to validate this speculation.
+
+The maximum stay duration suggests entire homes/apartments are targeting longer-term guests, while shared rooms and private rooms are targeting short-term guests. This could be a result of professional property management strategies, but it might also be partially due to the space limitations of shared and private rooms, which are less suitable for long-term rentals.
+
+
+```{python}
+#| echo: false
+# look data distribution
+# Define the room types in desired order
+room_types = ['Entire home/apt', 'Private room', 'Shared room', 'Hotel room']
+
+# Create main figure
+fig = plt.figure(figsize=(15, 12), dpi=100)
+gs = fig.add_gridspec(4, 1, height_ratios=[1, 1, 1, 1])
+
+# Define color scheme for room types
+roomtype_color = {
+    'Entire home/apt': '#d73027',  
+    'Private room':    '#7b3294',  
+    'Shared room':     '#ffd700',  
+    'Hotel room':      '#377eb8'   
+}
+
+# Part 1: Horizontal stacked bar chart
+ax_top = fig.add_subplot(gs[0, 0])
+counts = df['room_type'].value_counts()
+total = counts.sum()
+proportions = pd.Series([counts.get(rt, 0) for rt in room_types], index=room_types) / total
+
+left = 0
+for rt in room_types:
+    ax_top.barh(y=0, width=proportions[rt], left=left, 
+                color=roomtype_color[rt], edgecolor='none', label=rt)
+    left += proportions[rt]
+
+ax_top.set_title("Room Type Proportion and Stay Duration Distribution", fontsize=20, fontweight='bold')
+ax_top.set_xlim(0, 1)
+ax_top.set_xticks(np.arange(0, 1.1, 0.2))
+ax_top.set_xticklabels([f'{int(x*100)}%' for x in np.arange(0, 1.1, 0.2)])
+ax_top.set_yticks([])
+ax_top.legend(title="Room Type", ncol=len(room_types), loc='upper center', 
+              bbox_to_anchor=(0.5, -0.2))
+
+for spine in ax_top.spines.values():
+    spine.set_visible(False)
+
+
+
+
+# add mean label ( green triangle)
+# creatw the lable
+mean_marker = plt.Line2D([], [], marker='^', 
+                        color='none',           
+                        markerfacecolor='green', 
+                        markeredgecolor='none',
+                        markersize=10,
+                        label='Mean')
+
+# get exsiting label
+handles, labels = ax_top.get_legend_handles_labels()
+
+handles.append(mean_marker)
+labels.append('Mean')
+
+# modify current label
+ax_top.legend(handles=handles, 
+             labels=labels,
+             title="Room Type", 
+             ncol=len(room_types) + 1, 
+             loc='upper center', 
+             bbox_to_anchor=(0.5, -0.2))
+
+
+
+
+
+# part 2 boxplot Define metrics and their titles
+metrics = [
+    ('minimum_nights_avg_ntm', 'Minimum Nights in future Distribution', (0, 15)),
+    ('maximum_nights_avg_ntm', 'Maximum Nights in future Distribution', (0, 150)),
+    ('availability_365', 'Availability in future 365 Days Distribution', (0, 365))
+]
+
+# Create boxplots for each metric
+for idx, (metric, title, xlim) in enumerate(metrics, 1):
+    ax = fig.add_subplot(gs[idx, 0])
+    
+    metric_data = []
+    for rt in room_types:
+        # Filter data based on metric
+        if metric == 'minimum_nights_avg_ntm':
+            data = df[(df['room_type'] == rt) & 
+                     (df[metric] > 0) & 
+                     (df[metric] <= 15)][metric]
+        elif metric == 'maximum_nights_avg_ntm':
+            data = df[(df['room_type'] == rt) & 
+                     (df[metric] > 0) & 
+                     (df[metric] <= 150)][metric]
+        else:
+            data = df[(df['room_type'] == rt) & 
+                     (df[metric] > 0) & 
+                     (df[metric] < 365)][metric]
+        metric_data.append(data)
+        
+       
+    
+    # Create boxplot with enhanced visibility
+    bp = ax.boxplot(metric_data,
+                    vert=False,
+                    patch_artist=True,
+                    boxprops=dict(linewidth=1.5),
+                    whiskerprops=dict(linewidth=1.5),
+                    medianprops=dict(color='black', 
+                                   linewidth=2.0),  
+                    capprops=dict(linewidth=1.5),
+                    meanprops=dict(marker='^',      
+                                 markerfacecolor='green',
+                                 markeredgecolor='none',
+                                 markersize=10),
+                    showmeans=True,
+                    meanline=False,  
+                    showfliers=False,
+                    whis=1.5)
+    
+    # Set colors for boxes
+    for box, rt in zip(bp['boxes'], room_types):
+        box.set_facecolor(roomtype_color[rt])
+        box.set_edgecolor('black')
+    
+    ax.set_title(title, fontsize=14)
+    ax.set_xlim(xlim)
+    
+    # Set appropriate x-ticks based on the range
+    if metric == 'minimum_nights_avg_ntm':
+        ax.set_xticks(np.arange(0, 16, 3))
+    elif metric == 'maximum_nights_avg_ntm':
+        ax.set_xticks(np.arange(0, 151, 30))
+    else:
+        ax.set_xticks(np.arange(0, 366, 90))
+    
+    ax.set_yticks(range(1, len(room_types) + 1))
+    ax.set_yticklabels(room_types)
+    ax.grid(True, axis='x', linestyle='-', alpha=0.3)
+    
+    # Set x-label based on metric
+    if metric == 'availability_365':
+        ax.set_xlabel("Available Days", fontsize=10)
+    else:
+        ax.set_xlabel("Nights", fontsize=10)
+
+plt.tight_layout()
+
+# Save figure with high dpi for better quality
+plt.savefig('room_type_analysis.png', 
+            dpi=100,           
+            bbox_inches='tight', 
+            pad_inches=0.1)     
+
+
+plt.show()
+```
+
+:::
+
+## 7. Drawing on your previous answers, and supporting your response with evidence (*e.g.* figures, maps, EDA/ESDA, and simple statistical analysis/models drawing on experience from, e.g., CASA0007), how *could* the InsideAirbnb data set be used to inform the regulation of Short-Term Lets (STL) in London? 
+
+::: {.duedate}
+
+( 45 points; Answer due  )
+
+:::
+
+## Sustainable Authorship Tools
+
+Using the Terminal in Docker, you compile the Quarto report using `quarto render <group_submission_file>.qmd`.
+
+Your QMD file should automatically download your BibTeX and CLS files and any other required files. If this is done right after library loading then the entire report should output successfully.
+
+Written in Markdown and generated from [Quarto](https://quarto.org/). Fonts used: [Spectral](https://fonts.google.com/specimen/Spectral) (mainfont), [Roboto](https://fonts.google.com/specimen/Roboto) (<span style="font-family:Sans-Serif;">sansfont</span>) and [JetBrains Mono](https://fonts.google.com/specimen/JetBrains%20Mono) (`monofont`). 
+
+## References
