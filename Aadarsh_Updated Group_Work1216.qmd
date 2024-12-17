@@ -1,0 +1,1208 @@
+---
+bibliography: bio.bib
+csl: harvard-cite-them-right.csl
+title: IMAAX Group Project
+execute:
+  echo: false
+  freeze: true
+format:
+  html:
+    code-copy: true
+    code-link: true
+    toc: true
+    toc-title: On this page
+    toc-depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+  pdf:
+    include-in-header:
+      text: |
+        \addtokomafont{disposition}{\rmfamily}
+    mainfont: Spectral
+    sansfont: Roboto Flex
+    monofont: Liberation Mono
+    geometry:
+      - top=25mm
+      - left=40mm
+      - right=30mm
+      - bottom=25mm
+      - heightrounded
+    toc: false
+    number-sections: false
+    colorlinks: true
+    highlight-style: github
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: '1.0'
+      jupytext_version: 1.16.4
+  kernelspec:
+    display_name: Python (base)
+    language: python
+    name: base
+---
+
+```{python}
+import os
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib import patches
+import contextily as ctx
+import seaborn as sns
+from sklearn.cluster import KMeans
+
+
+import matplotlib
+import matplotlib.font_manager
+
+from requests import get
+from urllib.parse import urlparse
+```
+
+```{python}
+#| echo: false
+def cache_data(src: str, dest: str) -> str:
+    """
+    Downloads and caches a file from the given URL if it does not already exist locally 
+    or if the cached file is smaller than 250 bytes.
+
+    Args:
+        src (str): The source URL to download the file from.
+        dest (str): The destination directory where the file should be stored.
+
+    Returns:
+        str: The full path to the cached or downloaded file.
+    """
+    url = urlparse(src)  # Parse the URL
+    fn = os.path.split(url.path)[-1]  # Extract the filename
+    dfn = os.path.join(dest, fn)  # Destination filename
+
+    if not os.path.isfile(dfn) or os.path.getsize(dfn) < 250:
+        path = os.path.split(dest)
+
+        if len(path) >= 1 and path[0] != '':
+            os.makedirs(os.path.join(*path), exist_ok=True)
+            
+        with open(dfn, "wb") as file:  # Write in binary
+            response = get(src)
+            file.write(response.content)
+
+    return dfn
+```
+
+```{python}
+#| echo: false
+
+
+# load listing data
+
+# Set download URL
+ymd  = '20240614'
+city = 'London'
+host = 'https://orca.casa.ucl.ac.uk'
+url  = f'{host}/~jreades/data/{ymd}-{city}-listings.csv.gz'
+
+#download it locally if not exist
+
+path = os.path.join('data','raw') 
+fn   = url.split('/')[-1]         
+#print(f"Writing to: {fn}")
+
+df = pd.read_csv(cache_data(url, os.path.join('data','raw')))
+#print(f"Data frame is {df.shape[0]:,} x {df.shape[1]}")
+```
+
+```{python}
+#| echo: false
+#| results: hide
+
+# geo data download
+ddir  = os.path.join('data','geo') # destination directory
+spath = 'https://github.com/jreades/i2p/blob/master/data/src/' # source path
+
+boros = gpd.read_file( cache_data(spath+'Boroughs.gpkg?raw=true', ddir) )
+water = gpd.read_file( cache_data(spath+'Water.gpkg?raw=true', ddir) )
+green = gpd.read_file( cache_data(spath+'Greenspace.gpkg?raw=true', ddir) )
+road =  gpd.read_file( cache_data(spath+'Roads.gpkg?raw=true', ddir) )
+#print('Done.')
+```
+
+```{python}
+#| echo: false
+
+# airbnb listing
+#df.info()
+
+#choose cols needed for analysis
+
+
+# Select relevant columns
+cols = [
+    'id', 'listing_url', 'last_scraped', 'name', 'description', 'host_id', 'host_name', 
+    'host_since', 'host_location', 'host_about', 'host_acceptance_rate', 
+    'host_is_superhost', 'host_neighbourhood', 'host_listings_count', 
+    'host_total_listings_count', 'host_verifications', 'latitude', 'longitude',
+    'property_type', 'room_type', 'accommodates', 'bathrooms', 'bathrooms_text', 
+    'bedrooms', 'beds', 'amenities', 'price', 'minimum_nights', 'maximum_nights','minimum_minimum_nights',
+    'maximum_minimum_nights', 'minimum_maximum_nights', 'maximum_maximum_nights', 'minimum_nights_avg_ntm', 'maximum_nights_avg_ntm', 'availability_365', 'number_of_reviews', 'first_review', 'last_review', 
+    'review_scores_rating', 'reviews_per_month'
+]
+```
+
+```{python}
+#| echo: false
+
+
+# testing bottom and cols subset
+testing = False
+
+
+if testing:
+    df = pd.read_csv(os.path.join(path,fn), 
+                low_memory=False, nrows=10000, usecols=cols)
+else:
+    df = pd.read_csv(os.path.join(path,fn), 
+                low_memory=False, usecols=cols)
+
+#print(f"Data frame is {df.shape[0]:,} x {df.shape[1]}")
+```
+
+```{python}
+#| echo: false
+
+
+#get a summary table of Na in each column
+na_counts = df.isnull().sum()
+na_percentage = (df.isnull().mean() * 100).round(2)
+
+na_summary = pd.DataFrame({'Missing Count': na_counts, 'Missing Percentage': na_percentage})
+
+na_summary = na_summary[na_summary['Missing Count'] > 0].sort_values(by='Missing Percentage', ascending=False)
+
+#print(na_summary)
+```
+
+```{python}
+#| echo: false
+#| results: hide
+# store these ro#| ws to drop problem rows(with to many NA)
+probs = df.isnull().sum(axis=1)
+#print(type(probs))       
+cutoff = 5
+df.drop(probs[probs > cutoff].index, inplace=True)
+#print(f"Have reduced data frame to: {df.shape[0]:,} rows and {df.shape[1]:,} columns")
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be bool but show object
+bools = ['host_is_superhost']
+df.sample(5, random_state=43)[bools]
+# map 't' and 'f' to True and False
+for b in bools:
+    #print(f"Converting {b}")
+    df[b] = df[b].replace({'f':False, 't':True}).astype('bool')
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be date but show object
+dates = ['host_since']
+#print(f"Currently {dates[0]} is of type '{df[dates[0]].dtype}'", "\n")
+df.sample(5, random_state=43)[dates]
+
+for d in dates:
+    #print("Converting " + d)
+    df[d] = pd.to_datetime(df[d])
+#print(f"Now {dates[0]} is of type '{df[dates[0]].dtype}'", "\n")
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be cats but show object
+cats = ['property_type','room_type']
+
+#print(f"Currently {cats[1]} is of type '{df[cats[1]].dtype}'", "\n")
+#df.sample(5, random_state=42)[cats]
+```
+
+```{python}
+#| echo: false
+
+
+# see unique value in cols and frequency
+#print(df[cats[0]].value_counts())
+#print(df[cats[1]].value_counts())
+
+# convert dtype
+for c in cats:
+    #print(f"Converting {c}")
+    df[c] = df[c].astype('category')
+```
+
+```{python}
+#| echo: false
+
+
+# convert object has numeric meaning 
+money = ['price']
+#df.sample(5, random_state=43)[money]
+
+for m in money:
+    #print(f"Converting {m}")
+    df[m] = df[m].str.replace('$','', regex=False).str.replace(',','').astype('float')
+```
+
+```{python}
+#| echo: false
+
+# save data
+
+path = os.path.join('data','clean')
+
+if not os.path.exists(path):
+    #print(f"Creating {path} under {os.getcwd()}")
+    os.makedirs(path)
+    
+df.to_csv(os.path.join(path,fn), index=False)
+#print("Done.")
+```
+
+```{python}
+#| echo: false
+
+# get geo version of df
+# get listing data cleaned
+df = pd.read_csv("data/clean/20240614-London-listings.csv.gz")
+
+# get the gdf of listing data
+gdf = gpd.GeoDataFrame(df,
+      geometry=gpd.points_from_xy(df.longitude, df.latitude, crs='epsg:4326'))
+      
+# save the gdf version of listing data
+gdf = gdf.to_crs(epsg=27700)
+
+fn = "20240614-listings.gpkg"
+file_path = os.path.join('data', 'geo', fn)
+
+if not os.path.exists(file_path):
+    try:
+        gdf.to_file(file_path, driver='GPKG')
+    except TypeError as e:
+        pass  # Handle error silently or log it using a logging library if needed
+```
+
+```{python}
+#| echo: false
+
+# download   bio.bib  + csl form github
+ddir2 = os.getcwd()  # destination directory :qmd and this 2 file should be in the same folder
+spath2 = 'https://github.com/aadarsh11421/IMAAX/blob/main/' # source path
+
+cache_data(spath2+'bio.bib?raw=true', ddir2);
+cache_data(spath2+'harvard-cite-them-right.csl?raw=true', ddir2);
+```
+
+## 1. Who collected the InsideAirbnb data?
+
+Murray Cox, the project's founder, gathers and examines much of the Inside Airbnb data, which is publicly accessible data from Airbnb's website. As the community of Inside Airbnb grows, residents, activists, and allies involved keep collecting data  
+ 
+Taylor Higgins is working to build and organize the data and activist communities of Inside Airbnb. 
+
+
+
+## 2. Why did they collect the InsideAirbnb data?
+
+1. Offer openness about Airbnb's activities and analyses its effects on local communities and housing markets. 
+
+2. The project also serves as a platform for fighting against the negative impacts of short-term rentals. 
+
+3. Their vision and mission is to provide data and advocacy about Airbnb’s impact on residential communities.  
+
+
+
+
+
+
+## 3. How was the InsideAirbnb data collected?  
+
+The data from this website was scraped directly from the Airbnb website – (https://www.airbnb.co.uk). The data from this website utilises information which is public and uses open-source technologies such as D3（Javascript library, Bootsrap, Python and Postgre SQL Open-source database to scrape the data 
+
+This dataset collects various data from each listing including Country, City, address, Host ID, Price, duration. 
+
+## 4. How does the method of collection impact the completeness and/or accuracy of the InsideAirbnb data set's representation of the process it seeks to study, and what wider issues does this raise?
+
+Based on Q3 these process made it possible for Researchers to generally collect data directly from Airbnb, whom operates globally [].There are several discussions about the in accuracies of the inside Airbnb Data for instance a study by Prentice, C. and Pawlicz, A. (2024), suggest that webscraped data is nonetheless not free from errors or inaccuracies for a range of reasons. For instance, some tourists may use different distribution channels or book directly, while listings may be faked, duplicated, simply an inactive test or be booked occasionally (Adamiak, 2022). Moreover, the web scraping process may be constrained by the platform provider (Alsudais, 2021), while analytics provided by organizations may be inflated due to their innate business interest (Dolnicar, 2019). However, these constraints and limitations are rarely reported in academic publications. Despite these limitations, Inside Airbnb's data is widely used for research and advocacy purposes. It provides valuable insights into the impact of short-term rentals on housing markets and communities. However, researchers and data scientists should be aware of these limitations.  
+
+1. Incomplete Listings: Not all Airbnb listings are publicly accessible, and some hosts may choose to keep their listings private, leading to gaps in the data. 
+
+2. Data Quality: The accuracy of the data depends on the accuracy of the listings provided by hosts. Inaccurate or outdated information can skew the results. 
+
+3. Bias: The data may be biased towards more popular or higher-rated listings, as these are more likely to be reviewed and updated frequently. 
+
+The wider issues raised by these limitations include the need for more comprehensive and accurate data collection methods, as well as the ethical considerations of using scraped data. Ensuring data quality and representativeness is crucial for making informed decisions and policies related to housing and tourism. 
+
+## 5. What ethical considerations does the use of the InsideAirbnb data raise? 
+
+The neutrality thesis claims that technological artifacts have no inherent values, politics, or consequences. technology is neither inherently good nor inherently bad. It is rather the human agency of those using the technology, which is responsible for the outcomes and consequently, for the technology’s social and political implications. In other words, according to the neutrality thesis, what matters is how we as individuals or as a society use technology (Pitt, 2014). 
+
+Looking at the morality of the usage of insideAirbnb data more broadly, decisions regarding technologies’ design, their use, and the contexts in which they are embedded can have not only ethical but also political consequences (Feenberg, 2002; Introna, 2007; Sclove, 1995; Winner, 1980). 
+
+Firstly, using InsideAirbnb data raises questions about who has the right to access and use the platform’s data. While the website collects data by scraping Airbnb's public information - a practice that violates Airbnb's terms of service (Stringam, Gerdes and Anderson, 2023), does so to enable important public interest research, such as reports to help us understand how short-term rentals affect our communities. 
+
+Secondly, there are significant privacy concerns. Although the information scraped is publicly visible on Airbnb's website, it contains personal details about hosts and guests through reviews and listings. When this data is collected and used for purposes beyond what users originally intended, it raises important privacy questions - even if the information was voluntarily shared on the platform. 
+
+Thirdly, there's the impact of commercial exploitation of this data. Companies use Inside Airbnb data to provide market analysis services, helping hosts optimize their pricing and operations (Scassa, 2019). While this creates new business opportunities, it could worsen housing affordability problems by making short-term rentals more profitable. 
+
+## 6. With reference to the InsideAirbnb data (*i.e.* using numbers, figures, maps, and descriptive statistics), what does an analysis of Hosts and Listing types suggest about the nature of Airbnb lets in London? 
+
+### Airbnb: Moving Beyond Home Sharing? - Through Host Behavior and Categorization
+
+The charts reveal Airbnb's shift from home-sharing to a commercialized short-term rental market. The proportion bar chart shows entire homes/apartments dominate (60%), while private rooms (35%) and shared/hotel rooms (5%) play minor roles, reflecting a professionalized market.
+
+```{python}
+#| echo: false
+
+#6.1.1 Explore the distribution of booking duration in hosts' future plan, though some listings show relatively small availability, which may means 
+# define the room types in the desired order
+room_types = ['Entire home/apt', 'Private room', 'Shared room', 'Hotel room']
+
+# create main figure
+fig = plt.figure(figsize=(15, 12))
+gs = fig.add_gridspec(4, 1, height_ratios=[1, 1, 1, 1])
+
+# Define color scheme for room types
+roomtype_color = {
+    'Entire home/apt': '#d73027',  
+    'Private room': '#7b3294',  
+    'Shared room': '#ffd700',  
+    'Hotel room': '#377eb8'   
+}
+
+# 1 Horizontal propotion bar chart
+ax_top = fig.add_subplot(gs[0])
+counts = df['room_type'].value_counts()
+total = counts.sum()
+proportions = pd.Series([counts.get(rt, 0) for rt in room_types], index=room_types) / total
+
+left = 0
+for rt in room_types:
+    ax_top.barh(y=0, width=proportions[rt], left=left, color=roomtype_color[rt], label=rt)
+    left += proportions[rt]
+
+ax_top.set_title("Room Type Proportion and Stay Duration Distribution", fontsize=20, fontweight='bold')
+ax_top.set_xlim(0, 1)
+ax_top.set_xticks(np.arange(0, 1.1, 0.2))
+ax_top.set_xticklabels([f'{int(x*100)}%' for x in np.arange(0, 1.1, 0.2)])
+ax_top.set_yticks([])
+
+# Add mean marker
+mean_marker = plt.Line2D([], [], marker='^', color='none', markerfacecolor='green', markersize=10, label='Mean')
+handles, labels = ax_top.get_legend_handles_labels()
+ax_top.legend(handles + [mean_marker], labels + ['Mean'], title="Room Type", ncol=len(room_types) + 1, 
+             loc='upper center', bbox_to_anchor=(0.5, -0.2))
+
+# 2 Define metrics for boxplot 
+metrics = [
+    ('minimum_nights_avg_ntm', 'Minimum Nights in future Distribution', (0, 15)),
+    ('maximum_nights_avg_ntm', 'Maximum Nights in future Distribution', (0, 200)),
+    ('availability_365', 'Availability in future 365 Days Distribution', (0, 365))
+]
+
+# Create boxplots for each metric
+for idx, (metric, title, xlim) in enumerate(metrics, 1):
+    ax = fig.add_subplot(gs[idx])
+    
+    # Collect data for each room type
+    metric_data = []
+    for rt in room_types:
+        # Filter data to remove outliers (0-365 days)
+        data = df[(df['room_type'] == rt) & (df[metric] > 0) & (df[metric] < 365)][metric]
+        metric_data.append(data)
+    
+    # Create boxplot
+    bp = ax.boxplot(metric_data,
+                    vert=False,
+                    patch_artist=True,
+                    boxprops=dict(linewidth=1.5),
+                    whiskerprops=dict(linewidth=1.5),
+                    medianprops=dict(color='black', linewidth=2.0),
+                    capprops=dict(linewidth=1.5),
+                    meanprops=dict(marker='^', markerfacecolor='green', markersize=10),
+                    showmeans=True,
+                    meanline=False,
+                    showfliers=False)
+    
+    # Set box colors
+    for box, rt in zip(bp['boxes'], room_types):
+        box.set_facecolor(roomtype_color[rt])
+        box.set_edgecolor('black')
+    
+    # Set chart properties
+    ax.set_title(title, fontsize=14)
+    ax.set_xlim(xlim)
+    
+    if metric == 'minimum_nights_avg_ntm':
+        ax.set_xticks(np.arange(0, 16, 3))
+    elif metric == 'maximum_nights_avg_ntm':
+        ax.set_xticks(np.arange(0, 200, 30))
+    else:
+        ax.set_xticks(np.arange(0, 366, 90))
+    
+    ax.set_yticks(range(1, len(room_types) + 1))
+    ax.set_yticklabels(room_types)
+    ax.grid(True, axis='x', linestyle='-', alpha=0.3)
+    
+    ax.set_xlabel("Available Days" if metric == 'availability_365' else "Nights", fontsize=10)
+
+plt.tight_layout()
+plt.savefig('room_type_analysis.png', dpi=100, bbox_inches='tight', pad_inches=0.1)
+plt.show()
+```
+
+Superhost data highlights this further: Commercial and Mid-scale Hosts achieve higher Superhost proportions, indicating consistent, high-quality service tied to frequent bookings and professional management.
+
+The availability boxplots show most listings are bookable for 90–270 days, suggesting hosts plan well in advance, typical of investment properties rather than casual home-sharing. Longer stays in entire homes target extended guests, while private/shared rooms focus on shorter durations due to space limitations. Combined, these insights point to Airbnb's evolution into a business-focused platform, prioritizing profitability over its original community-based concept.
+
+```{python}
+#6.1.2 We categorize hosts by using how many listings they have； basically, over one listing will indicate a commercialized preference
+#1-Proportion of Superhosts by Host Category Map
+# Categorize hosts based on host_listings_count
+def categorize_hosts(listings_count):
+    if listings_count == 1:
+        return 'Single-property host'
+    elif 2 <= listings_count <= 5:
+        return 'Mid-scale host'
+    else:
+        return 'Commercial host'
+# Apply the categorization to the DataFrame
+df['host_category'] = df['host_listings_count'].apply(categorize_hosts)
+# Calculate the proportion of host_is_superhost for each host category
+superhost_proportion = df.groupby(['host_category', 'host_is_superhost']).size().unstack().fillna(0)
+superhost_proportion = superhost_proportion.div(superhost_proportion.sum(axis=1), axis=0)
+# Visualize the proportions using a stacked bar chart
+import matplotlib.pyplot as plt
+superhost_proportion.plot(kind='bar', stacked=True, figsize=(10, 6), color=['skyblue', 'orange'])
+plt.title('Proportion of Superhosts by Host Category')
+plt.xlabel('Host Category')
+plt.ylabel('Proportion')
+plt.legend(title='Superhost', loc='upper right')
+plt.show()
+```
+
+### How AirBnb Listings are Located in the London Borough
+
+We have removed blue and green spaces from the Boroughs to calculate the Airbnb listings density, as it would be a better representation of the built density.
+
+```{python}
+#6.2.1 
+df = pd.read_csv("data/clean/20240614-London-listings.csv.gz")
+#boros.crs
+#water.crs
+#green.crs
+```
+
+```{python}
+#| include: false
+
+# Create a figure and axis
+fig, ax = plt.subplots(figsize=(10, 10))
+
+boros.plot(ax=ax, color='lightgrey', edgecolor='black', alpha=0.5)
+water.plot(ax=ax, color = 'blue', alpha = 0.5)
+green.plot(ax=ax, color = 'green', alpha = 0.5)
+
+legend_handles = [
+    mpatches.Patch(color='lightgrey', label='Boroughs'),
+    mpatches.Patch(color='blue', label='Water'),
+    mpatches.Patch(color='green', label='Greenspaces')]
+
+ax.legend(handles=legend_handles)
+
+
+plt.title('London Borough Map with Blue and Green Spaces')
+
+plt.show()
+# Here I am removing the water and green spaces from the Boroughs as these areas won't have any AirBnb listings them and would be a better representation when we calculate the listing density.
+```
+
+```{python}
+#| include: false
+
+list(boros)
+
+boros_wo_water = boros.difference(water.union_all())
+boros_wo_water_green = boros_wo_water.difference(green.union_all())
+
+new_boros = gpd.GeoDataFrame(geometry=boros_wo_water_green, crs=boros.crs)
+
+new_boros['area'] = new_boros.geometry.area/1000000
+
+new_boros = new_boros.merge(boros[['NAME', 'GSS_CODE', 'HECTARES']], left_index=True, right_index=True, how='left')
+new_boros = new_boros.rename(columns = {'HECTARES' : 'OLD_HECTARES'})
+
+new_boros = new_boros[['NAME', 'GSS_CODE', 'OLD_HECTARES', 'area', 'geometry']]
+
+print(new_boros.head())
+```
+
+```{python}
+#| include: false
+# Ploted the listings on the new London Borough map to check the spatial distribution of the Airbnb property listings.
+geometry = gpd.points_from_xy(df['longitude'], df['latitude'])
+abnb = gpd.GeoDataFrame (df, geometry = geometry, crs="EPSG:4326")
+
+if new_boros.crs != abnb.crs:
+    abnb = abnb.to_crs(new_boros.crs)
+
+fig, ax = plt.subplots(figsize=(20, 20))
+
+new_boros.plot(ax=ax, edgecolor='white', alpha=0.5)
+abnb.plot(ax=ax, color='red', markersize=5, alpha=0.2, label='Airbnb Listings')
+
+ax.legend()
+
+plt.title('Airbnb Listings Over Boroughs')
+plt.show()
+```
+
+```{python}
+#| include: false
+# Spatial join of the listings using the points (longitude, latitude) of the listings and the borough map
+joined = gpd.sjoin(abnb, new_boros, how="inner", predicate="within")
+
+listing_counts = joined.groupby('NAME').size().reset_index(name='listing_count')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+```{python}
+#| include: false
+
+new_boros['area'] = pd.to_numeric(new_boros['area'], errors='coerce')# Earlier area dtype was object, converted it to float as it was causing sorting problems in listing_density
+
+new_boros['listing_density'] = new_boros['listing_count']/new_boros['area']
+```
+
+```{python}
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
+# Assuming water, boros, new_boros, and green are already defined GeoDataFrames
+
+clip_water = water.clip(boros.geometry)
+
+fig, ax = plt.subplots(figsize=(20, 20))
+
+# Plot the boroughs with listing density
+new_boros.plot(ax=ax, 
+               column='listing_density', 
+               cmap='OrRd',  # Choose a color map
+               edgecolor='white',  # Color of the borders
+               legend=True,  # Show legend
+               legend_kwds={'label': "Listings Density", 'orientation': "vertical", 'pad': 0.01, 'shrink': 0.5, 'aspect': 30})  # Adjust legend settings
+
+# Plot the water and green areas without labels for the legend
+clip_water.plot(ax=ax, color='blue', alpha=0.15)
+green.plot(ax=ax, color='green', alpha=0.15)
+
+# Add title
+plt.title('Thematic Map of Listings Density')
+
+# Add a north arrow
+x, y, arrow_length = 0.98, 0.98, 0.1
+ax.annotate('N', xy=(x, y), xytext=(x, y-arrow_length),
+            arrowprops=dict(facecolor='black', shrink=0.05),
+            ha='center', va='center', fontsize=20,
+            xycoords=ax.transAxes)
+
+# Function to draw a scale bar
+def scale_bar(ax, length, location=(0.5, 0.05), linewidth=3):
+    """
+    Draw a scale bar on the map.
+    """
+    x, y = location
+    bar_x = [x - length / 2, x + length / 2]
+    bar_y = [y, y]
+    ax.plot(bar_x, bar_y, color='black', transform=ax.transAxes, linewidth=linewidth)
+    ax.text(x, y + 0.02, f'{length} km', transform=ax.transAxes,
+            horizontalalignment='center', verticalalignment='bottom', fontsize=15)
+
+# Add a scale bar
+scale_bar(ax, length=10)  # Adjust the length as needed
+
+# Display the map
+plt.show()
+```
+
+The thematic map of Airbnb listing density shows a clear concentration in central London, with 65% of all listings (as of 2024) located in just 11 central boroughs. This clustering reflects the area's strong tourist appeal and proximity to key attractions. The steady rise in listings over the years reveals a more concerning trend.
+
+```{python}
+#The thematic map of Airbnb listing density highlights a clear concentration of listings in central London. Remarkably, 65% of all Airbnb listings (as of 2024) are located within just 11 central boroughs, out of a total of 32 boroughs. This spatial clustering reflects the central area's strong appeal to tourists and its proximity to key attractions and amenities.
+
+#At first glance, this concentration might not seem alarming. However, the rise in Airbnb listings over the years tells a more concerning story.
+
+
+#| include : false
+sort_boros = new_boros.sort_values(by='listing_density', ascending = False)
+
+print(sort_boros[['NAME', 'listing_count', 'area', 'listing_density']].head())
+
+# Westminster hosts nearly 11.5% of all Airbnb listings in London, meaning that more than one-tenth of the city’s short-term rentals are concentrated within
+#a single borough. This disproportionate share can be attributed to Westminster's status as a hub for London's most popular tourist attractions. Property owners
+#are capitalizing on this high tourist demand by converting their properties into short-term rentals, often prioritizing immediate profitability over long-term rental stability.
+```
+
+Westminster holds 12% of all Airbnb listings in London, driven by its popularity as a major tourist hub. Property owners capitalize on this demand by prioritizing short-term rentals for immediate profits over long-term rental stability.
+
+```{python}
+#| include: false
+
+new_boros['listing_percent'] = (new_boros['listing_count']/new_boros['listing_count'].sum())*100
+new_boros['listing_percent'] = new_boros['listing_percent'].round(2)
+
+print(new_boros[['NAME','listing_percent']])
+```
+
+```{python}
+#| echo: false
+#Here we wanted to analyze when the listing was uploaded on the Airbnb website, then analyze the rate of change of increase in the listings over the years, But unfortunately, 
+#we dont have the listing date, so instead we have used host_since. This will not give us an accurate result and there are many hosts which have multiple properties. But with the given dataset,
+#we are using host_since as the listing date and ignore the fact that many hosts have multiple properties for moment. 
+hosts = len(df['host_id'])
+print(f"The number of hosts:{hosts}")
+unique_hosts = df['host_id'].nunique() 
+print(f"The number of unique hosts:{unique_hosts}")
+
+abnb_2010 = abnb[abnb['host_since'] < '2010-01-01']
+abnb_2015 = abnb[abnb['host_since'] < '2015-01-01']
+abnb_2020 = abnb[abnb['host_since'] < '2020-01-01']
+
+print(f"Number of listings in London till 2010: {len(abnb_2010)}")
+print(f"Number of listings in London till 2015: {len(abnb_2015)}")
+print(f"Number of listings in London till 2020: {len(abnb_2020)}")
+print(f"Number of listings in London till 2024: {len(abnb)}")
+```
+
+```{python}
+#| echo: false
+
+joined_2010 = gpd.sjoin(abnb_2010, new_boros, how="inner", predicate="within")
+
+listing_counts = joined_2010.groupby('NAME').size().reset_index(name='listing_count_2010')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+```{python}
+#| echo: false
+
+joined_2015 = gpd.sjoin(abnb_2015, new_boros, how="inner", predicate="within")
+
+listing_counts = joined_2015.groupby('NAME').size().reset_index(name='listing_count_2015')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+```{python}
+#| echo: false
+
+joined_2020 = gpd.sjoin(abnb_2020, new_boros, how="inner", predicate="within")
+
+listing_counts = joined_2020.groupby('NAME').size().reset_index(name='listing_count_2020')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+```{python}
+#| echo: false
+#Converting Nan values to 0 
+new_boros[['listing_count_2010', 'listing_count_2015', 'listing_count_2020', 'listing_count']] = new_boros[['listing_count_2010', 'listing_count_2015', 'listing_count_2020', 'listing_count']].fillna(0)
+```
+
+Here, we are calculating the percentage of rate of increase of listings over 5 year time period from 2010-2015, 2015-2020, and 2024-25
+
+```{python}
+#| echo: false
+
+new_boros['listing_percent_change_2015'] = ((new_boros['listing_count_2015']-new_boros['listing_count_2010'])/new_boros['listing_count_2015'].sum())*100
+new_boros['listing_percent_change_2015'] = new_boros['listing_percent_change_2015'].round(2)
+
+new_boros['listing_percent_change_2020'] = ((new_boros['listing_count_2020']-new_boros['listing_count_2015'])/new_boros['listing_count_2020'].sum())*100
+new_boros['listing_percent_change_2020'] = new_boros['listing_percent_change_2020'].round(2)
+
+new_boros['listing_percent_change_2025'] = ((new_boros['listing_count']-new_boros['listing_count_2020'])/new_boros['listing_count'].sum())*100
+new_boros['listing_percent_change_2025'] = new_boros['listing_percent_change_2025'].round(2)
+```
+
+```{python}
+#| include: false
+
+fig, ax = plt.subplots(figsize=(12, 8))
+
+# Step 3: Prepare data for plotting
+# Set the index to borough names for easier plotting
+new_boros.set_index('NAME', inplace=False)
+
+# Step 4: Create bar graphs
+# Plotting the data for each year
+new_boros[['listing_percent_change_2015', 'listing_percent_change_2020', 'listing_percent_change_2025']].plot(kind='bar', ax=ax)
+
+# Step 5: Customize the plot
+ax.set_title('Listing Percent Change by Borough (2015, 2020, 2025)', fontsize=16)
+ax.set_xlabel('Boroughs', fontsize=12)
+ax.set_ylabel('Percent Change', fontsize=12)
+ax.legend(title='Year', fontsize=10)
+ax.grid(axis='y')
+
+# Step 6: Show the plot
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+```
+
+The graph highlights a significant rise in Airbnb listings across Central London, particularly in Westminster, Camden, Lambeth, and Southwark, with consistent growth over the years and no borough showing a decline. This indicates a continuous conversion of properties into short-term rentals, while the reverse—reverting to long-term rentals—remains negligible.
+
+The concentration of Airbnb properties in Central London is concerning. Attracted by higher revenues, property owners increasingly convert homes into short-term rentals, reducing the long-term rental supply and driving up rents in an already competitive market. This dynamic places financial strain on tenants, forcing lower-income residents to relocate to outer boroughs and accelerating gentrification.
+
+Emerging growth in Airbnb listings in outer areas like Ealing, Barnet, and Croydon suggests the short-term rental market is expanding outward, further risking a decline in long-term rental availability.
+
+The rise of short-term rentals presents key challenges:
+
+1. Housing Affordability: Fewer long-term rental properties drive up rents, reducing housing options for local residents.
+2. Community Disruption: Short-term rentals lack long-term occupants, preventing stable, cohesive communities and eroding neighborhood identity.
+
+```{python}
+#| include: false
+
+mean_prices = joined.groupby('NAME')['price'].mean().reset_index()
+mean_prices.columns = ['borough', 'mean_listing_price']
+mean_prices['mean_listing_price'] = mean_prices['mean_listing_price'].round(2)
+
+mean_prices = mean_prices.sort_values(by ='mean_listing_price', ascending = False)
+
+print(mean_prices)
+print(sort_boros[['NAME', 'listing_count', 'listing_density']])
+```
+
+## 7. Drawing on your previous answers, and supporting your response with evidence (*e.g.* figures, maps, EDA/ESDA, and simple statistical analysis/models drawing on experience from, e.g., CASA0007), how *could* the InsideAirbnb data set be used to inform the regulation of Short-Term Lets (STL) in London? 
+
+### 
+
+```{python}
+#| include: false
+import plotly.express as px
+import contextily as ctx
+
+# Drop rows with missing price values
+df = df.dropna(subset=['price'])
+
+# Create the scatter mapbox plot
+fig = px.scatter_mapbox(
+    df,
+    lon=df['longitude'],
+    lat=df['latitude'],
+    color=df['property_type'],  # Color markers by property type
+    size=df['price'],  # Size markers by price
+    hover_name=df['name'],
+    hover_data={'price': True, 'availability_365': True, 'host_neighbourhood': True},
+    zoom=10,
+    height=900,
+    title='Airbnb Listings in London'
+)
+
+# Update layout to use Stamen Toner style (black and white)
+fig.update_layout(mapbox_style="carto-positron")
+
+# Customize margins
+fig.update_layout(margin={"r":0, "t":50, "l":0, "b":10})
+
+# Show the plot
+fig.show()
+```
+
+### Focus on Westminster: Analyzing the Tourist Borugh
+
+```{python}
+#| echo: false
+
+westminster_boro = joined[joined['NAME'] == 'Westminster']
+#print(westminster_boro.head())
+```
+
+```{python}
+#| include: false
+geometry_westminster = gpd.points_from_xy(westminster_boro['longitude'], westminster_boro['latitude'])
+westminster_bnb = gpd.GeoDataFrame (westminster_boro, geometry = geometry_westminster, crs="EPSG:4326")
+westminster_boundary = new_boros[new_boros['NAME'] == 'Westminster']
+westminster_bg = boros[boros['NAME'] == 'Westminster']
+westminster_boundary = westminster_boundary.to_crs(westminster_bnb.crs)
+westminster_bg = westminster_bg.to_crs(westminster_bnb.crs)
+fig, ax = plt.subplots(figsize=(20, 20))
+# Plot the Westminster boundary
+westminster_bg.plot(ax=ax, color = 'lightgrey', edgecolor = 'black', alpha = 0.3)
+westminster_boundary.plot(ax=ax, color='lightblue', edgecolor='white')
+# Plot the Airbnb listings
+westminster_bnb.plot(ax=ax, marker='o', color='red', markersize=10, alpha=0.2)  # Adjust markersize and alpha as needed
+# Add labels and title
+ax.set_title("Airbnb Listings in Westminster")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+ax.legend()
+plt.show()
+```
+
+Checking the clusters of Airbnb listings in Westminster
+
+```{python}
+#| echo: false
+
+fig, ax = plt.subplots(figsize=(20, 20))
+
+westminster_boundary.plot(ax=ax, color='lightblue', edgecolor='white')
+sns.kdeplot(x=westminster_bnb['longitude'], y=westminster_bnb['latitude'],
+            cmap="Reds", fill=True, thresh=0.02, ax=ax, alpha = 0.4)
+
+ax.set_title("Density of Airbnb Listings in Westminster (KDE)")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+
+plt.show()
+```
+
+```{python}
+coords = np.array(list(zip(westminster_bnb.geometry.x, westminster_bnb.geometry.y)))
+
+# Apply K-Means clustering
+n_clusters = 4  # Set the desired number of clusters
+kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto') #n_init added to remove warning
+westminster_bnb['cluster'] = kmeans.fit_predict(coords)
+
+# Plotting
+fig, ax = plt.subplots(figsize=(20, 20))
+
+# Plot the Westminster background and boundary
+westminster_boundary.plot(ax=ax, color='lightblue', edgecolor='white')
+
+# Plot the clusters
+for cluster in range(n_clusters):
+    cluster_points = westminster_bnb[westminster_bnb['cluster'] == cluster]
+    cluster_points.plot(ax=ax, marker='o', markersize=10, label=f"Cluster {cluster}")
+
+# Plot cluster centers
+centers = kmeans.cluster_centers_
+ax.scatter(centers[:, 0], centers[:, 1], marker='x', s=200, color='black', label='Cluster Centers')
+
+# Add labels, title, and legend
+ax.set_title(f"Airbnb Listings in Westminster (K-Means Clustering, {n_clusters} Clusters)")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+ax.legend()
+
+plt.show()
+```
+
+```{python}
+#| echo: false
+#print(westminster_bnb['cluster'].head())
+
+duplicate_counts = (
+    westminster_bnb.groupby(['cluster', 'host_id'])
+    .size()  # Count occurrences of each host_id in each cluster
+    .reset_index(name='count'))
+
+duplicates_per_cluster = duplicate_counts[duplicate_counts['count'] > 1]
+
+duplicate_summary = duplicates_per_cluster.groupby('cluster').size().reset_index(name='duplicate_host_count')
+
+print(duplicate_summary)
+print("")
+unique_hosts = westminster_bnb['host_id'].nunique()
+
+print(f'Number of unique hosts: {unique_hosts}')
+```
+
+Westminster, a major tourist hub, hosts almost 10,000 Airbnb listings, with four prominent clusters spanning the borough. This clustering indicates that short-term rentals dominate Westminster’s housing market, leaving little room for long-term rental stability. This dominance of short-term rentals raises significant concerns:
+
+1. Duplicate Hosts: Clusters reveal numerous properties managed by duplicate hosts, indicating property owners prioritize short-term lets for higher profits over long-term rentals.
+
+2. Housing Affordability: The proliferation of short-term rentals reduces long-term rental availability, driving up rents and pushing lower-income tenants out, exacerbating gentrification.
+
+3. Airbnb as an Occupation: Initially a platform for renting spare rooms, Airbnb has become a full-time occupation for professional hosts, reducing affordable housing supply and hindering stable community development.
+
+### Focus on Camden: How Professional Hosts Influence Local Neighbourhoods?
+
+Camden, with its mix of residential neighborhoods and thriving commercial hubs, offers an ideal case study to explore the community-level impact of professional Airbnb hosts.  The borough’s high concentration of short-term rentals (STRs), particularly entire properties [@doi:10.1177/0042098020970865], reflects its strong housing demand, cultural attractions, and economic activity.
+
+Our analysis using reviews_per_month, a measure of property turnover, shows professional hosts dominate high-turnover areas like Camden Town and King’s Cross, which may reduce housing availability for long-term residents and increase pressure on the rental market [doi:10.1177/23998083211001836]. In contrast, non-professional hosts with single properties are more evenly distributed and play a more notable role in less commercial areas.
+
+As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
+
+```{python}
+# 1load MSOA boundary to subset listing point
+msoa_gpkg = gpd.read_file( cache_data(f'{host}/~jreades/data//MSOA-2011.gpkg', ddir) ).to_crs('epsg:27700')
+listings = gpd.read_file('data/geo/20240614-listings.gpkg').to_crs('epsg:27700')
+
+# choose study area
+boro = 'Camden'
+boro_gdf = msoa_gpkg[msoa_gpkg.LAD11NM==boro].copy()
+
+# Do the spatial join
+boro_listings = gpd.sjoin(listings, boro_gdf, predicate='within', rsuffix='_r')
+
+# fill missing values with 0 to ignore
+boro_listings['host_listings_count'] = boro_listings['host_listings_count'].fillna(0)
+
+# 2 categorize hosts based on host_listings_count and group them by reviews and MSOA
+def categorize_hosts(listings_count):
+    if listings_count == 1:
+        return 'Single-property host'
+    elif 2 <= listings_count <= 5:
+        return 'Mid-scale host'
+    else:
+        return 'Commercial host'
+
+# apply the categorization to the DataFrame
+boro_listings['host_category'] = boro_listings['host_listings_count'].apply(categorize_hosts)
+
+# 1 separate professional and non-professional hosts data
+# professional hosts = Commercial hosts + Mid-scale hosts
+professional_hosts = boro_listings[
+   (boro_listings['host_category'] == 'Commercial host') | 
+   (boro_listings['host_category'] == 'Mid-scale host')
+]
+
+# non-professional hosts = Single-property hosts
+nonprofessional_hosts = boro_listings[
+   boro_listings['host_category'] == 'Single-property host'
+]
+
+# 2 calculate average monthly reviews for pro hosts in each MSOA
+pro_reviews = professional_hosts.groupby('MSOA11NM')['reviews_per_month'].mean()
+pro_reviews = pro_reviews.reset_index()
+pro_reviews.columns = ['MSOA', 'pro_host_reviews']
+
+# 3 calculate average monthly reviews for non-pro hosts in each MSOA
+nonpro_reviews = nonprofessional_hosts.groupby('MSOA11NM')['reviews_per_month'].mean()
+nonpro_reviews = nonpro_reviews.reset_index()
+nonpro_reviews.columns = ['MSOA', 'nonpro_host_reviews']
+
+# 4 Merge both datasets together
+msoa_activity = pro_reviews.merge(
+   nonpro_reviews, 
+   on='MSOA',             
+   how='outer'            
+)
+
+# 5 Merge statistics back to boro_gdf
+boro_gdf = boro_gdf.merge(
+    msoa_activity, 
+    left_on='MSOA11NM',   
+    right_on='MSOA', 
+    how='left'
+)
+```
+
+```{python}
+import matplotlib.gridspec as gridspec
+
+fig = plt.figure(figsize=(14, 10))  # Set the figure size
+gs = gridspec.GridSpec(2, 2, figure=fig)  # 2 rows, 2 columns grid layout
+
+
+# 1 Create bar chart comparing professional and non-professional hosts
+ax3 = fig.add_subplot(gs[0, :])  
+x = np.arange(len(msoa_activity['MSOA'])) 
+width = 0.35  
+
+# Plot bars for each host type
+ax3.bar(x - width/2, msoa_activity['pro_host_reviews'], 
+       width, label='Professional Hosts (Commercial + Mid-scale)')  
+ax3.bar(x + width/2, msoa_activity['nonpro_host_reviews'], 
+       width, label='Non-Professional Hosts (Single-property)')  
+
+# Customize bar chart appearance
+ax3.set_xlabel('MSOA')  # X-axis label
+ax3.set_ylabel('Average Reviews Per Month')  
+ax3.set_title('Average Monthly Reviews: Professional vs Non-Professional Hosts by MSOA in Camden', 
+             fontweight='bold', fontsize=20)  
+ax3.set_xticks(x)  # Set x-tick positions
+ax3.set_xticklabels(msoa_activity['MSOA'], rotation=90)  
+ax3.legend()  # Add legend
+
+# 2 Create heatmaps showing geographical distribution
+
+ax1 = fig.add_subplot(gs[1, 0])  
+ax2 = fig.add_subplot(gs[1, 1], sharey=ax1)  #  share y-axis with left
+
+# Calculate common color scale for both heatmaps
+vmin = min(boro_gdf['pro_host_reviews'].min(), 
+          boro_gdf['nonpro_host_reviews'].min())  
+vmax = max(boro_gdf['pro_host_reviews'].max(), 
+          boro_gdf['nonpro_host_reviews'].max())  
+
+# Create heatmap for profosts
+boro_gdf.plot(column='pro_host_reviews', 
+             cmap='Reds',  
+             legend=True, 
+             vmin=vmin,  
+             vmax=vmax,  
+             ax=ax1)
+ax1.set_title('Professional Hosts (Average Reviews Per Month)')
+
+# Create heatmap for non-pro hosts
+boro_gdf.plot(column='nonpro_host_reviews', 
+             cmap='Reds', 
+             legend=True, 
+             vmin=vmin, 
+             vmax=vmax,
+             ax=ax2)
+ax2.set_title('Non-Professional Hosts (Average Reviews Per Month)')
+
+
+plt.tight_layout()  
+plt.savefig('camden_airbnb_active.png', 
+           dpi=100,  
+           bbox_inches='tight',  
+           pad_inches=0.1)  
+plt.show()
+```
+
+As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
+
+```{python}
+# down load poi we need from osm map
+# this osm poi data from github is download from  the Geofabrik download server website(https://download.geofabrik.de/)
+# then Navigate to: Europe > United Kingdom > England > Greater London
+# Download greater-london-latest-free.shp.zip > gis_osm_pois_free_1.shp> transform it in Qgis to geopackge
+
+# Set paths
+ddir = os.path.join('data', 'geo')  # destination directory 
+spath3 = 'https://github.com/Aprilmiaoyilee/IMAAX_miaoyi/blob/main/data/geo/'  # source path
+
+
+# Read the complete shapefile into a GeoDataFrame
+
+poi_gdf= gpd.read_file( cache_data(spath3+'gis_osm_pois.gpkg?raw=true', ddir) )
+
+
+
+
+
+# poi list related according to reference
+poi_list = [
+    # Hotel-related
+    "hotel", "hostel", "guesthouse", "motel", "caravan_site", "chalet",
+    
+    # Liquor-related
+    "bar", "pub", "biergarten",
+    
+    # Retail Food-related
+    "restaurant", "cafe", "fast_food", "food_court", "supermarket",
+    "convenience", "greengrocer", "bakery", "butcher", "beverages",
+    
+    # Entertainment-related
+    "cinema", "museum", "theatre", "arts_centre", "nightclub",
+    "community_centre", "zoo", "monument", "memorial", "attraction",
+    "park", "viewpoint"
+]
+
+filtered_poi = poi_gdf[poi_gdf["fclass"].isin(poi_list)].copy()
+filtered_poi = filtered_poi.to_crs("EPSG:27700")
+
+
+# fliterpoi to camden
+poi_in_camden = gpd.sjoin(filtered_poi, boro_gdf, predicate="within", rsuffix="_r")
+```
+
+```{python}
+#count poi in butter
+
+# Step 1: Create 500-meter buffers
+buffer_radius = 500
+boro_listings["buffer"] = boro_listings.geometry.buffer(buffer_radius)
+
+# Step 2: Perform spatial join to find POIs within buffers
+buffer_gdf = boro_listings.set_geometry("buffer")
+buffer_poi_intersect = gpd.sjoin(poi_in_camden, buffer_gdf, predicate="within", how="inner")
+
+# Step 3: Count total POIs in buffers
+poi_count = buffer_poi_intersect.groupby("index_right").size()
+boro_listings["poi_count"] = boro_listings.index.map(poi_count).fillna(0)
+
+# Step 4: Count POIs by type
+poi_types = poi_in_camden["fclass"].unique()
+for poi_type in poi_types:
+    filtered_poi = buffer_poi_intersect[buffer_poi_intersect["fclass"] == poi_type]
+    poi_type_count = filtered_poi.groupby("index_right").size()
+    boro_listings[f"{poi_type}_count"] = boro_listings.index.map(poi_type_count).fillna(0)
+
+# Step 5: Summarize POI counts
+poi_summary = boro_listings.groupby("host_category")["poi_count"].mean()
+
+poi_type_summary = boro_listings.groupby("host_category")[
+    [f"{poi_type}_count" for poi_type in poi_types]
+].mean()
+```
+
+```{python}
+import seaborn as sns
+
+# Define POI categories
+categories = {
+   "Hotel": ["hotel", "hostel", "guesthouse", "motel", "caravan_site", "chalet"],
+   "Liquor": ["bar", "pub", "biergarten"],
+   "Retail Food": ["restaurant", "cafe", "fast_food", "food_court", "supermarket",
+                   "convenience", "greengrocer", "bakery", "butcher", "beverages"],
+   "Entertainment": ["cinema", "museum", "theatre", "arts_centre", "nightclub",
+                    "community_centre", "zoo", "monument", "memorial", "attraction",
+                    "park", "viewpoint"]
+}
+
+# Calculate total POIs for each category
+category_data = {}
+for cat, poi_types in categories.items():
+   valid_columns = [f"{poi}_count" for poi in poi_types if f"{poi}_count" in poi_type_summary.columns]
+   category_data[cat] = poi_type_summary[valid_columns].sum(axis=1)
+
+# Create DataFrame and plot heatmap
+category_df = pd.DataFrame(category_data)
+
+plt.figure(figsize=(12, 8))
+sns.heatmap(category_df.T, annot=True, cmap="YlGnBu", cbar=True, fmt=".1f")
+plt.title("POI Count within 500m of Listings: Host Categories vs. POI Category", 
+        fontweight='bold', fontsize=20)
+plt.ylabel("POI Categories")
+plt.xlabel("Host Categories")
+
+plt.savefig('POI count within 500m.png', dpi=100, bbox_inches='tight', pad_inches=0.1)
+plt.show()
+```
+
+## Proposed Policy Recommendations:
+To regulate the impact of short-term rentals in high-density areas like Westminster, Camden, and other boroughs experiencing similar trends, we propose the following policy framework:
+
+1. The introduction of density caps this sets the maximum amount of Airbnb’s in a specific region. This is done when there are concerns regarding high concentration of STLs which then impact the availability and affordability of local rental (UK Government, 2024). Another suggestion is to ensure that properties rented as short-term lets must also be rented as long-term lets for at least double (double is an arbitrary number, it can be 1.5x, 1.75x, etc.) the number of short-term nights (e.g., 180 nights).
+
+2. Strategic Short-Term Letting:By imposing such a cap, property owners would need to strategize when to list properties as short-term rentals (e.g., during peak tourist seasons like summer and winter breaks) while fulfilling their obligation to offer long-term rental options during off-seasons. This would strike a balance between tourism demand and housing stability.
+
+3. Mandatory registration schemes give local councils the required information about STL in their boroughs. This is regulation is in place to “prevent a “hollowing out” of communities (UK Government, 2024). Finally, tiering tax policies by introducing higher tax rates for STR in areas that have more STL’s. This can be seen in Greece as they increased the tax on STR as of 2025 tax on STLs in the tourism season will increase 460% (Papadimas, 2024).[@vonbriel2021evolution]
+
+Investment opportunities to support professional hosts
+The data shows that there are 2,264 hosts that have more than 5 listings.  This suggests that there is an investment opportunity in place for these hosts to help manage these listings. There is the space to offer all in one service that include channel manager, which provides the ability to have bookings come in from multiple platforms, multi calendar which can help these multi hosts streamline bookings and automated tools for everyday tasks such as messaging the clients for updates and pricing requests. These tools and services are investment opportunity for these hosts as it provides efficiency and increased profitability.
+
+
+## References
