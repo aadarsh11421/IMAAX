@@ -160,3 +160,23 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+
+# Ignore history and temporary files
+.Rhistory
+
+# Ignore Jupyter notebook files
+6.1.ipynb
+7.3.ipynb
+Group_Work.ipynb
+data/geo/Untitled.ipynb
+
+# Ignore image files
+Airbnb Listings in London.png
+POI count within 500m.png
+camden_airbnb_active.png
+room_type_analysis.png
+
+# Ignore data files
+data/geo/MSOA-2011.gpkg
+
