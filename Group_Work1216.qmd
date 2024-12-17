@@ -40,9 +40,9 @@ jupyter:
       format_version: '1.0'
       jupytext_version: 1.16.4
   kernelspec:
-    display_name: Python 3 (ipykernel)
+    display_name: Python (base)
     language: python
-    name: python3
+    name: base
 ---
 
 ```{python}
@@ -55,9 +55,10 @@ import pandas as pd
 import geopandas as gpd
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
-
+import matplotlib.gridspec as gridspec
 import matplotlib
 import matplotlib.font_manager
+import seaborn as sns
 
 from requests import get
 from urllib.parse import urlparse
@@ -310,7 +311,12 @@ if not os.path.exists(file_path):
 ```{python}
 #| echo: false
 
-# download   bio.bib  + csl form github
+# download   bio.bib  + reference style form github
+ddir2 = os.getcwd()  # destination directory :qmd and this 2 file should be in the same folder
+spath2 = 'https://github.com/aadarsh11421/IMAAX/blob/main/' # source path
+
+cache_data(spath2+'bio.bib?raw=true', ddir2);
+cache_data(spath2+'harvard-cite-them-right.csl?raw=true', ddir2);
 ```
 
 ## 1. Who collected the InsideAirbnb data?
@@ -374,32 +380,30 @@ The maximum stay duration suggests entire homes/apartments are targeting longer-
 
 ```{python}
 #| echo: false
-# look data distribution
-# Define the room types in desired order
+# define the room types in desired order
 room_types = ['Entire home/apt', 'Private room', 'Shared room', 'Hotel room']
 
-# Create main figure
-fig = plt.figure(figsize=(15, 12), dpi=100)
+# create main figure
+fig = plt.figure(figsize=(15, 12))
 gs = fig.add_gridspec(4, 1, height_ratios=[1, 1, 1, 1])
 
 # Define color scheme for room types
 roomtype_color = {
     'Entire home/apt': '#d73027',  
-    'Private room':    '#7b3294',  
-    'Shared room':     '#ffd700',  
-    'Hotel room':      '#377eb8'   
+    'Private room': '#7b3294',  
+    'Shared room': '#ffd700',  
+    'Hotel room': '#377eb8'   
 }
 
-# Part 1: Horizontal stacked bar chart
-ax_top = fig.add_subplot(gs[0, 0])
+# 1 Horizontal propotion bar chart
+ax_top = fig.add_subplot(gs[0])
 counts = df['room_type'].value_counts()
 total = counts.sum()
 proportions = pd.Series([counts.get(rt, 0) for rt in room_types], index=room_types) / total
 
 left = 0
 for rt in room_types:
-    ax_top.barh(y=0, width=proportions[rt], left=left, 
-                color=roomtype_color[rt], edgecolor='none', label=rt)
+    ax_top.barh(y=0, width=proportions[rt], left=left, color=roomtype_color[rt], label=rt)
     left += proportions[rt]
 
 ax_top.set_title("Room Type Proportion and Stay Duration Distribution", fontsize=20, fontweight='bold')
@@ -407,103 +411,57 @@ ax_top.set_xlim(0, 1)
 ax_top.set_xticks(np.arange(0, 1.1, 0.2))
 ax_top.set_xticklabels([f'{int(x*100)}%' for x in np.arange(0, 1.1, 0.2)])
 ax_top.set_yticks([])
-ax_top.legend(title="Room Type", ncol=len(room_types), loc='upper center', 
-              bbox_to_anchor=(0.5, -0.2))
 
-for spine in ax_top.spines.values():
-    spine.set_visible(False)
-
-
-
-
-# add mean label ( green triangle)
-# creatw the lable
-mean_marker = plt.Line2D([], [], marker='^', 
-                        color='none',           
-                        markerfacecolor='green', 
-                        markeredgecolor='none',
-                        markersize=10,
-                        label='Mean')
-
-# get exsiting label
+# Add mean marker
+mean_marker = plt.Line2D([], [], marker='^', color='none', markerfacecolor='green', markersize=10, label='Mean')
 handles, labels = ax_top.get_legend_handles_labels()
+ax_top.legend(handles + [mean_marker], labels + ['Mean'], title="Room Type", ncol=len(room_types) + 1, 
+             loc='upper center', bbox_to_anchor=(0.5, -0.2))
 
-handles.append(mean_marker)
-labels.append('Mean')
-
-# modify current label
-ax_top.legend(handles=handles, 
-             labels=labels,
-             title="Room Type", 
-             ncol=len(room_types) + 1, 
-             loc='upper center', 
-             bbox_to_anchor=(0.5, -0.2))
-
-
-
-
-
-# part 2 boxplot Define metrics and their titles
+# 2 Define metrics for boxplot 
 metrics = [
     ('minimum_nights_avg_ntm', 'Minimum Nights in future Distribution', (0, 15)),
-    ('maximum_nights_avg_ntm', 'Maximum Nights in future Distribution', (0, 150)),
+    ('maximum_nights_avg_ntm', 'Maximum Nights in future Distribution', (0, 200)),
     ('availability_365', 'Availability in future 365 Days Distribution', (0, 365))
 ]
 
 # Create boxplots for each metric
 for idx, (metric, title, xlim) in enumerate(metrics, 1):
-    ax = fig.add_subplot(gs[idx, 0])
+    ax = fig.add_subplot(gs[idx])
     
+    # Collect data for each room type
     metric_data = []
     for rt in room_types:
-        # Filter data based on metric
-        if metric == 'minimum_nights_avg_ntm':
-            data = df[(df['room_type'] == rt) & 
-                     (df[metric] > 0) & 
-                     (df[metric] <= 15)][metric]
-        elif metric == 'maximum_nights_avg_ntm':
-            data = df[(df['room_type'] == rt) & 
-                     (df[metric] > 0) & 
-                     (df[metric] <= 150)][metric]
-        else:
-            data = df[(df['room_type'] == rt) & 
-                     (df[metric] > 0) & 
-                     (df[metric] < 365)][metric]
+        # Filter data to remove outliers (0-365 days)
+        data = df[(df['room_type'] == rt) & (df[metric] > 0) & (df[metric] < 365)][metric]
         metric_data.append(data)
-        
-       
     
-    # Create boxplot with enhanced visibility
+    # Create boxplot
     bp = ax.boxplot(metric_data,
                     vert=False,
                     patch_artist=True,
                     boxprops=dict(linewidth=1.5),
                     whiskerprops=dict(linewidth=1.5),
-                    medianprops=dict(color='black', 
-                                   linewidth=2.0),  
+                    medianprops=dict(color='black', linewidth=2.0),
                     capprops=dict(linewidth=1.5),
-                    meanprops=dict(marker='^',      
-                                 markerfacecolor='green',
-                                 markeredgecolor='none',
-                                 markersize=10),
+                    meanprops=dict(marker='^', markerfacecolor='green', markersize=10),
                     showmeans=True,
-                    meanline=False,  
-                    showfliers=False,
-                    whis=1.5)
+                    meanline=False,
+                    showfliers=False)
     
-    # Set colors for boxes
+    # Set box colors
     for box, rt in zip(bp['boxes'], room_types):
         box.set_facecolor(roomtype_color[rt])
         box.set_edgecolor('black')
     
+    # Set chart properties
     ax.set_title(title, fontsize=14)
     ax.set_xlim(xlim)
     
-    # Set appropriate x-ticks based on the range
     if metric == 'minimum_nights_avg_ntm':
         ax.set_xticks(np.arange(0, 16, 3))
     elif metric == 'maximum_nights_avg_ntm':
-        ax.set_xticks(np.arange(0, 151, 30))
+        ax.set_xticks(np.arange(0, 200, 30))
     else:
         ax.set_xticks(np.arange(0, 366, 90))
     
@@ -511,21 +469,10 @@ for idx, (metric, title, xlim) in enumerate(metrics, 1):
     ax.set_yticklabels(room_types)
     ax.grid(True, axis='x', linestyle='-', alpha=0.3)
     
-    # Set x-label based on metric
-    if metric == 'availability_365':
-        ax.set_xlabel("Available Days", fontsize=10)
-    else:
-        ax.set_xlabel("Nights", fontsize=10)
+    ax.set_xlabel("Available Days" if metric == 'availability_365' else "Nights", fontsize=10)
 
 plt.tight_layout()
-
-# Save figure with high dpi for better quality
-plt.savefig('room_type_analysis.png', 
-            dpi=100,           
-            bbox_inches='tight', 
-            pad_inches=0.1)     
-
-
+plt.savefig('room_type_analysis.png', dpi=100, bbox_inches='tight', pad_inches=0.1)
 plt.show()
 ```
 
@@ -560,13 +507,257 @@ fig.update_layout(margin={"r":0, "t":50, "l":0, "b":10})
 fig.show()
 ```
 
-:::
-
 ## 7. Drawing on your previous answers, and supporting your response with evidence (*e.g.* figures, maps, EDA/ESDA, and simple statistical analysis/models drawing on experience from, e.g., CASA0007), how *could* the InsideAirbnb data set be used to inform the regulation of Short-Term Lets (STL) in London? 
 
-::: {.duedate}
 
-( 45 points; Answer due  )
+
+### 7.3 Focus on Camden: How Professional Hosts Influence Local Neighbourhoods?
+Camden, with its mix of residential neighborhoods and thriving commercial hubs, offers an ideal case study to explore the community-level impact of professional Airbnb hosts.  The borough’s high concentration of short-term rentals (STRs), particularly entire properties [@doi:10.1177/0042098020970865], reflects its strong housing demand, cultural attractions, and economic activity.
+
+Our analysis using reviews_per_month, a measure of property turnover, shows professional hosts dominate high-turnover areas like Camden Town and King’s Cross, which may reduce housing availability for long-term residents and increase pressure on the rental market [doi:10.1177/23998083211001836]. In contrast, non-professional hosts with single properties are more evenly distributed and play a more notable role in less commercial areas.
+
+As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
+
+```{python}
+# 1load MSOA boundary to subset listing point
+msoa_gpkg = gpd.read_file( cache_data(f'{host}/~jreades/data//MSOA-2011.gpkg', ddir) ).to_crs('epsg:27700')
+listings = gpd.read_file('data/geo/20240614-listings.gpkg').to_crs('epsg:27700')
+
+# choose study area
+boro = 'Camden'
+boro_gdf = msoa_gpkg[msoa_gpkg.LAD11NM==boro].copy()
+
+# Do the spatial join
+boro_listings = gpd.sjoin(listings, boro_gdf, predicate='within', rsuffix='_r')
+
+# fill missing values with 0 to ignore
+boro_listings['host_listings_count'] = boro_listings['host_listings_count'].fillna(0)
+
+# 2 categorize hosts based on host_listings_count and group them by reviews and MSOA
+def categorize_hosts(listings_count):
+    if listings_count == 1:
+        return 'Single-property host'
+    elif 2 <= listings_count <= 5:
+        return 'Mid-scale host'
+    else:
+        return 'Commercial host'
+
+# apply the categorization to the DataFrame
+boro_listings['host_category'] = boro_listings['host_listings_count'].apply(categorize_hosts)
+
+# 1 separate professional and non-professional hosts data
+# professional hosts = Commercial hosts + Mid-scale hosts
+professional_hosts = boro_listings[
+   (boro_listings['host_category'] == 'Commercial host') | 
+   (boro_listings['host_category'] == 'Mid-scale host')
+]
+
+# non-professional hosts = Single-property hosts
+nonprofessional_hosts = boro_listings[
+   boro_listings['host_category'] == 'Single-property host'
+]
+
+# 2 calculate average monthly reviews for pro hosts in each MSOA
+pro_reviews = professional_hosts.groupby('MSOA11NM')['reviews_per_month'].mean()
+pro_reviews = pro_reviews.reset_index()
+pro_reviews.columns = ['MSOA', 'pro_host_reviews']
+
+# 3 calculate average monthly reviews for non-pro hosts in each MSOA
+nonpro_reviews = nonprofessional_hosts.groupby('MSOA11NM')['reviews_per_month'].mean()
+nonpro_reviews = nonpro_reviews.reset_index()
+nonpro_reviews.columns = ['MSOA', 'nonpro_host_reviews']
+
+# 4 Merge both datasets together
+msoa_activity = pro_reviews.merge(
+   nonpro_reviews, 
+   on='MSOA',             
+   how='outer'            
+)
+
+# 5 Merge statistics back to boro_gdf
+boro_gdf = boro_gdf.merge(
+    msoa_activity, 
+    left_on='MSOA11NM',   
+    right_on='MSOA', 
+    how='left'
+)
+```
+
+```{python}
+import matplotlib.gridspec as gridspec
+
+fig = plt.figure(figsize=(14, 10))  # Set the figure size
+gs = gridspec.GridSpec(2, 2, figure=fig)  # 2 rows, 2 columns grid layout
+
+
+# 1 Create bar chart comparing professional and non-professional hosts
+ax3 = fig.add_subplot(gs[0, :])  
+x = np.arange(len(msoa_activity['MSOA'])) 
+width = 0.35  
+
+# Plot bars for each host type
+ax3.bar(x - width/2, msoa_activity['pro_host_reviews'], 
+       width, label='Professional Hosts (Commercial + Mid-scale)')  
+ax3.bar(x + width/2, msoa_activity['nonpro_host_reviews'], 
+       width, label='Non-Professional Hosts (Single-property)')  
+
+# Customize bar chart appearance
+ax3.set_xlabel('MSOA')  # X-axis label
+ax3.set_ylabel('Average Reviews Per Month')  
+ax3.set_title('Average Monthly Reviews: Professional vs Non-Professional Hosts by MSOA in Camden', 
+             fontweight='bold', fontsize=20)  
+ax3.set_xticks(x)  # Set x-tick positions
+ax3.set_xticklabels(msoa_activity['MSOA'], rotation=90)  
+ax3.legend()  # Add legend
+
+# 2 Create heatmaps showing geographical distribution
+
+ax1 = fig.add_subplot(gs[1, 0])  
+ax2 = fig.add_subplot(gs[1, 1], sharey=ax1)  #  share y-axis with left
+
+# Calculate common color scale for both heatmaps
+vmin = min(boro_gdf['pro_host_reviews'].min(), 
+          boro_gdf['nonpro_host_reviews'].min())  
+vmax = max(boro_gdf['pro_host_reviews'].max(), 
+          boro_gdf['nonpro_host_reviews'].max())  
+
+# Create heatmap for profosts
+boro_gdf.plot(column='pro_host_reviews', 
+             cmap='Reds',  
+             legend=True, 
+             vmin=vmin,  
+             vmax=vmax,  
+             ax=ax1)
+ax1.set_title('Professional Hosts (Average Reviews Per Month)')
+
+# Create heatmap for non-pro hosts
+boro_gdf.plot(column='nonpro_host_reviews', 
+             cmap='Reds', 
+             legend=True, 
+             vmin=vmin, 
+             vmax=vmax,
+             ax=ax2)
+ax2.set_title('Non-Professional Hosts (Average Reviews Per Month)')
+
+
+plt.tight_layout()  
+plt.savefig('camden_airbnb_active.png', 
+           dpi=100,  
+           bbox_inches='tight',  
+           pad_inches=0.1)  
+plt.show()  
+```
+
+As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
+
+```{python}
+# down load poi we need from osm map
+# this osm poi data from github is download from  the Geofabrik download server website(https://download.geofabrik.de/)
+# then Navigate to: Europe > United Kingdom > England > Greater London
+# Download greater-london-latest-free.shp.zip > gis_osm_pois_free_1.shp> transform it in Qgis to geopackge
+
+# Set paths
+ddir = os.path.join('data', 'geo')  # destination directory 
+spath3 = 'https://github.com/Aprilmiaoyilee/IMAAX_miaoyi/blob/main/data/geo/'  # source path
+
+
+# Read the complete shapefile into a GeoDataFrame
+
+poi_gdf= gpd.read_file( cache_data(spath3+'gis_osm_pois.gpkg?raw=true', ddir) )
+
+
+
+
+
+# poi list related according to reference
+poi_list = [
+    # Hotel-related
+    "hotel", "hostel", "guesthouse", "motel", "caravan_site", "chalet",
+    
+    # Liquor-related
+    "bar", "pub", "biergarten",
+    
+    # Retail Food-related
+    "restaurant", "cafe", "fast_food", "food_court", "supermarket",
+    "convenience", "greengrocer", "bakery", "butcher", "beverages",
+    
+    # Entertainment-related
+    "cinema", "museum", "theatre", "arts_centre", "nightclub",
+    "community_centre", "zoo", "monument", "memorial", "attraction",
+    "park", "viewpoint"
+]
+
+filtered_poi = poi_gdf[poi_gdf["fclass"].isin(poi_list)].copy()
+filtered_poi = filtered_poi.to_crs("EPSG:27700")
+
+
+# fliterpoi to camden
+poi_in_camden = gpd.sjoin(filtered_poi, boro_gdf, predicate="within", rsuffix="_r")
+```
+
+```{python}
+#count poi in butter
+
+# Step 1: Create 500-meter buffers
+buffer_radius = 500
+boro_listings["buffer"] = boro_listings.geometry.buffer(buffer_radius)
+
+# Step 2: Perform spatial join to find POIs within buffers
+buffer_gdf = boro_listings.set_geometry("buffer")
+buffer_poi_intersect = gpd.sjoin(poi_in_camden, buffer_gdf, predicate="within", how="inner")
+
+# Step 3: Count total POIs in buffers
+poi_count = buffer_poi_intersect.groupby("index_right").size()
+boro_listings["poi_count"] = boro_listings.index.map(poi_count).fillna(0)
+
+# Step 4: Count POIs by type
+poi_types = poi_in_camden["fclass"].unique()
+for poi_type in poi_types:
+    filtered_poi = buffer_poi_intersect[buffer_poi_intersect["fclass"] == poi_type]
+    poi_type_count = filtered_poi.groupby("index_right").size()
+    boro_listings[f"{poi_type}_count"] = boro_listings.index.map(poi_type_count).fillna(0)
+
+# Step 5: Summarize POI counts
+poi_summary = boro_listings.groupby("host_category")["poi_count"].mean()
+
+poi_type_summary = boro_listings.groupby("host_category")[
+    [f"{poi_type}_count" for poi_type in poi_types]
+].mean()
+```
+
+```{python}
+import seaborn as sns
+
+# Define POI categories
+categories = {
+   "Hotel": ["hotel", "hostel", "guesthouse", "motel", "caravan_site", "chalet"],
+   "Liquor": ["bar", "pub", "biergarten"],
+   "Retail Food": ["restaurant", "cafe", "fast_food", "food_court", "supermarket",
+                   "convenience", "greengrocer", "bakery", "butcher", "beverages"],
+   "Entertainment": ["cinema", "museum", "theatre", "arts_centre", "nightclub",
+                    "community_centre", "zoo", "monument", "memorial", "attraction",
+                    "park", "viewpoint"]
+}
+
+# Calculate total POIs for each category
+category_data = {}
+for cat, poi_types in categories.items():
+   valid_columns = [f"{poi}_count" for poi in poi_types if f"{poi}_count" in poi_type_summary.columns]
+   category_data[cat] = poi_type_summary[valid_columns].sum(axis=1)
+
+# Create DataFrame and plot heatmap
+category_df = pd.DataFrame(category_data)
+
+plt.figure(figsize=(12, 8))
+sns.heatmap(category_df.T, annot=True, cmap="YlGnBu", cbar=True, fmt=".1f")
+plt.title("POI Count within 500m of Listings: Host Categories vs. POI Category", 
+        fontweight='bold', fontsize=20)
+plt.ylabel("POI Categories")
+plt.xlabel("Host Categories")
+
+plt.savefig('POI count within 500m.png', dpi=100, bbox_inches='tight', pad_inches=0.1)
+plt.show()
+```
 
 :::
 
