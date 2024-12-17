@@ -1,0 +1,970 @@
+---
+bibliography: bio.bib
+csl: harvard-cite-them-right.csl
+title: IMAAX Group Project
+execute:
+  echo: false
+  freeze: true
+format:
+  html:
+    code-copy: true
+    code-link: true
+    toc: true
+    toc-title: On this page
+    toc-depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+  pdf:
+    include-in-header:
+      text: |
+        \addtokomafont{disposition}{\rmfamily}
+    mainfont: Roboto
+    sansfont: Roboto Flex
+    monofont: Liberation Mono
+    geometry:
+      - top=25mm
+      - left=40mm
+      - right=30mm
+      - bottom=25mm
+      - heightrounded
+    toc: false
+    number-sections: false
+    colorlinks: true
+    highlight-style: github
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: '1.0'
+      jupytext_version: 1.16.4
+  kernelspec:
+    display_name: Python 3 (ipykernel)
+    language: python
+    name: python3
+---
+
+```{python}
+import os
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib import patches
+import contextily as ctx
+import seaborn as sns
+from sklearn.cluster import KMeans
+
+
+import matplotlib
+import matplotlib.font_manager
+
+from requests import get
+from urllib.parse import urlparse
+```
+
+```{python}
+#| echo: false
+def cache_data(src: str, dest: str) -> str:
+    """
+    Downloads and caches a file from the given URL if it does not already exist locally 
+    or if the cached file is smaller than 250 bytes.
+
+    Args:
+        src (str): The source URL to download the file from.
+        dest (str): The destination directory where the file should be stored.
+
+    Returns:
+        str: The full path to the cached or downloaded file.
+    """
+    url = urlparse(src)  # Parse the URL
+    fn = os.path.split(url.path)[-1]  # Extract the filename
+    dfn = os.path.join(dest, fn)  # Destination filename
+
+    if not os.path.isfile(dfn) or os.path.getsize(dfn) < 250:
+        path = os.path.split(dest)
+
+        if len(path) >= 1 and path[0] != '':
+            os.makedirs(os.path.join(*path), exist_ok=True)
+            
+        with open(dfn, "wb") as file:  # Write in binary
+            response = get(src)
+            file.write(response.content)
+
+    return dfn
+```
+
+```{python}
+#| echo: false
+
+
+# load listing data
+
+# Set download URL
+ymd  = '20240614'
+city = 'London'
+host = 'https://orca.casa.ucl.ac.uk'
+url  = f'{host}/~jreades/data/{ymd}-{city}-listings.csv.gz'
+
+#download it locally if not exist
+
+path = os.path.join('data','raw') 
+fn   = url.split('/')[-1]         
+#print(f"Writing to: {fn}")
+
+df = pd.read_csv(cache_data(url, os.path.join('data','raw')))
+#print(f"Data frame is {df.shape[0]:,} x {df.shape[1]}")
+```
+
+```{python}
+#| echo: false
+#| results: hide
+
+# geo data download
+ddir  = os.path.join('data','geo') # destination directory
+spath = 'https://github.com/jreades/i2p/blob/master/data/src/' # source path
+
+boros = gpd.read_file( cache_data(spath+'Boroughs.gpkg?raw=true', ddir) )
+water = gpd.read_file( cache_data(spath+'Water.gpkg?raw=true', ddir) )
+green = gpd.read_file( cache_data(spath+'Greenspace.gpkg?raw=true', ddir) )
+road =  gpd.read_file( cache_data(spath+'Roads.gpkg?raw=true', ddir) )
+#print('Done.')
+```
+
+```{python}
+#| echo: false
+
+# airbnb listing
+#df.info()
+
+#choose cols needed for analysis
+
+
+# Select relevant columns
+cols = [
+    'id', 'listing_url', 'last_scraped', 'name', 'description', 'host_id', 'host_name', 
+    'host_since', 'host_location', 'host_about', 'host_acceptance_rate', 
+    'host_is_superhost', 'host_neighbourhood', 'host_listings_count', 
+    'host_total_listings_count', 'host_verifications', 'latitude', 'longitude',
+    'property_type', 'room_type', 'accommodates', 'bathrooms', 'bathrooms_text', 
+    'bedrooms', 'beds', 'amenities', 'price', 'minimum_nights', 'maximum_nights','minimum_minimum_nights',
+    'maximum_minimum_nights', 'minimum_maximum_nights', 'maximum_maximum_nights', 'minimum_nights_avg_ntm', 'maximum_nights_avg_ntm', 'availability_365', 'number_of_reviews', 'first_review', 'last_review', 
+    'review_scores_rating', 'reviews_per_month'
+]
+```
+
+```{python}
+#| echo: false
+
+
+# testing bottom and cols subset
+testing = False
+
+
+if testing:
+    df = pd.read_csv(os.path.join(path,fn), 
+                low_memory=False, nrows=10000, usecols=cols)
+else:
+    df = pd.read_csv(os.path.join(path,fn), 
+                low_memory=False, usecols=cols)
+
+#print(f"Data frame is {df.shape[0]:,} x {df.shape[1]}")
+```
+
+```{python}
+#| echo: false
+
+
+#get a summary table of Na in each column
+na_counts = df.isnull().sum()
+na_percentage = (df.isnull().mean() * 100).round(2)
+
+na_summary = pd.DataFrame({'Missing Count': na_counts, 'Missing Percentage': na_percentage})
+
+na_summary = na_summary[na_summary['Missing Count'] > 0].sort_values(by='Missing Percentage', ascending=False)
+
+#print(na_summary)
+```
+
+```{python}
+#| echo: false
+#| results: hide
+# store these ro#| ws to drop problem rows(with to many NA)
+probs = df.isnull().sum(axis=1)
+#print(type(probs))       
+cutoff = 5
+df.drop(probs[probs > cutoff].index, inplace=True)
+#print(f"Have reduced data frame to: {df.shape[0]:,} rows and {df.shape[1]:,} columns")
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be bool but show object
+bools = ['host_is_superhost']
+df.sample(5, random_state=43)[bools]
+# map 't' and 'f' to True and False
+for b in bools:
+    #print(f"Converting {b}")
+    df[b] = df[b].replace({'f':False, 't':True}).astype('bool')
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be date but show object
+dates = ['host_since']
+#print(f"Currently {dates[0]} is of type '{df[dates[0]].dtype}'", "\n")
+df.sample(5, random_state=43)[dates]
+
+for d in dates:
+    #print("Converting " + d)
+    df[d] = pd.to_datetime(df[d])
+#print(f"Now {dates[0]} is of type '{df[dates[0]].dtype}'", "\n")
+```
+
+```{python}
+#| echo: false
+
+
+# find cols should be cats but show object
+cats = ['property_type','room_type']
+
+#print(f"Currently {cats[1]} is of type '{df[cats[1]].dtype}'", "\n")
+#df.sample(5, random_state=42)[cats]
+```
+
+```{python}
+#| echo: false
+
+
+# see unique value in cols and frequency
+#print(df[cats[0]].value_counts())
+#print(df[cats[1]].value_counts())
+
+# convert dtype
+for c in cats:
+    #print(f"Converting {c}")
+    df[c] = df[c].astype('category')
+```
+
+```{python}
+#| echo: false
+
+
+# convert object has numeric meaning 
+money = ['price']
+#df.sample(5, random_state=43)[money]
+
+for m in money:
+    #print(f"Converting {m}")
+    df[m] = df[m].str.replace('$','', regex=False).str.replace(',','').astype('float')
+```
+
+```{python}
+#| echo: false
+
+# save data
+
+path = os.path.join('data','clean')
+
+if not os.path.exists(path):
+    #print(f"Creating {path} under {os.getcwd()}")
+    os.makedirs(path)
+    
+df.to_csv(os.path.join(path,fn), index=False)
+#print("Done.")
+```
+
+```{python}
+#| echo: false
+
+# get geo version of df
+# get listing data cleaned
+df = pd.read_csv("data/clean/20240614-London-listings.csv.gz")
+
+# get the gdf of listing data
+gdf = gpd.GeoDataFrame(df,
+      geometry=gpd.points_from_xy(df.longitude, df.latitude, crs='epsg:4326'))
+      
+# save the gdf version of listing data
+gdf = gdf.to_crs(epsg=27700)
+
+fn = "20240614-listings.gpkg"
+file_path = os.path.join('data', 'geo', fn)
+
+if not os.path.exists(file_path):
+    try:
+        gdf.to_file(file_path, driver='GPKG')
+    except TypeError as e:
+        pass  # Handle error silently or log it using a logging library if needed
+```
+
+```{python}
+#| echo: false
+
+# download   bio.bib  + csl form github
+```
+
+## 1. Who collected the InsideAirbnb data?
+
+::: {.duedate}
+
+Answer
+
+:::
+
+An inline citation example: As discussed on @coxHowAirbnbsData, there are many...
+
+A parenthetical citation example: There are many ways to research Airbnb [see, for example, @coxHowAirbnbsData,]... 
+
+## 2. Why did they collect the InsideAirbnb data?
+
+::: {.duedate}
+
+
+
+:::
+
+
+
+
+
+## 3. How was the InsideAirbnb data collected?  
+
+::: {.duedate}
+
+
+
+:::
+
+## 4. How does the method of collection impact the completeness and/or accuracy of the InsideAirbnb data set's representation of the process it seeks to study, and what wider issues does this raise?
+
+::: {.duedate}
+
+
+
+:::
+
+## 5. What ethical considerations does the use of the InsideAirbnb data raise? 
+
+::: {.duedate}
+
+
+
+:::
+
+## 6. With reference to the InsideAirbnb data (*i.e.* using numbers, figures, maps, and descriptive statistics), what does an analysis of Hosts and Listing types suggest about the nature of Airbnb lets in London? 
+
+::: {.duedate}
+
+### 6.1 Airbnb: Moving Beyond Home Sharing?
+The proportion bar chart of London's Airbnb listings below reveals a potentially significant shift from its original home-sharing concept toward a more commercialized short-term rental market. Entire homes and apartments dominate the market, accounting for over 60% of all listings, while private rooms make up about 35%, leaving shared rooms and hotel rooms as minor segments at roughly 5% combined.
+
+The booking patterns across all property types suggest a trend of professionalized approach to short-term rentals. Most properties show availability for booking 90-270 days into the future, indicating that hosts tend to plan their rental calendars far in advance. This long-term availability pattern is noteworthy - it suggests these properties might be primarily investment assets rather than primary residences, as ordinary homeowners would likely struggle to plan their personal space use so far ahead. However, it's also possible that some hosts can arrange their listings months in advance due to stable life and work schedules, and plan the use of spare rooms ahead of time. Further data is needed to validate this speculation.
+
+The maximum stay duration suggests entire homes/apartments are targeting longer-term guests, while shared rooms and private rooms are targeting short-term guests. This could be a result of professional property management strategies, but it might also be partially due to the space limitations of shared and private rooms, which are less suitable for long-term rentals.
+
+```{python}
+#| echo: false
+# look data distribution
+# Define the room types in desired order
+room_types = ['Entire home/apt', 'Private room', 'Shared room', 'Hotel room']
+
+# Create main figure
+fig = plt.figure(figsize=(15, 12), dpi=100)
+gs = fig.add_gridspec(4, 1, height_ratios=[1, 1, 1, 1])
+
+# Define color scheme for room types
+roomtype_color = {
+    'Entire home/apt': '#d73027',  
+    'Private room':    '#7b3294',  
+    'Shared room':     '#ffd700',  
+    'Hotel room':      '#377eb8'   
+}
+
+# Part 1: Horizontal stacked bar chart
+ax_top = fig.add_subplot(gs[0, 0])
+counts = df['room_type'].value_counts()
+total = counts.sum()
+proportions = pd.Series([counts.get(rt, 0) for rt in room_types], index=room_types) / total
+
+left = 0
+for rt in room_types:
+    ax_top.barh(y=0, width=proportions[rt], left=left, 
+                color=roomtype_color[rt], edgecolor='none', label=rt)
+    left += proportions[rt]
+
+ax_top.set_title("Room Type Proportion and Stay Duration Distribution", fontsize=20, fontweight='bold')
+ax_top.set_xlim(0, 1)
+ax_top.set_xticks(np.arange(0, 1.1, 0.2))
+ax_top.set_xticklabels([f'{int(x*100)}%' for x in np.arange(0, 1.1, 0.2)])
+ax_top.set_yticks([])
+ax_top.legend(title="Room Type", ncol=len(room_types), loc='upper center', 
+              bbox_to_anchor=(0.5, -0.2))
+
+for spine in ax_top.spines.values():
+    spine.set_visible(False)
+
+
+
+
+# add mean label ( green triangle)
+# creatw the lable
+mean_marker = plt.Line2D([], [], marker='^', 
+                        color='none',           
+                        markerfacecolor='green', 
+                        markeredgecolor='none',
+                        markersize=10,
+                        label='Mean')
+
+# get exsiting label
+handles, labels = ax_top.get_legend_handles_labels()
+
+handles.append(mean_marker)
+labels.append('Mean')
+
+# modify current label
+ax_top.legend(handles=handles, 
+             labels=labels,
+             title="Room Type", 
+             ncol=len(room_types) + 1, 
+             loc='upper center', 
+             bbox_to_anchor=(0.5, -0.2))
+
+
+
+
+
+# part 2 boxplot Define metrics and their titles
+metrics = [
+    ('minimum_nights_avg_ntm', 'Minimum Nights in future Distribution', (0, 15)),
+    ('maximum_nights_avg_ntm', 'Maximum Nights in future Distribution', (0, 150)),
+    ('availability_365', 'Availability in future 365 Days Distribution', (0, 365))
+]
+
+# Create boxplots for each metric
+for idx, (metric, title, xlim) in enumerate(metrics, 1):
+    ax = fig.add_subplot(gs[idx, 0])
+    
+    metric_data = []
+    for rt in room_types:
+        # Filter data based on metric
+        if metric == 'minimum_nights_avg_ntm':
+            data = df[(df['room_type'] == rt) & 
+                     (df[metric] > 0) & 
+                     (df[metric] <= 15)][metric]
+        elif metric == 'maximum_nights_avg_ntm':
+            data = df[(df['room_type'] == rt) & 
+                     (df[metric] > 0) & 
+                     (df[metric] <= 150)][metric]
+        else:
+            data = df[(df['room_type'] == rt) & 
+                     (df[metric] > 0) & 
+                     (df[metric] < 365)][metric]
+        metric_data.append(data)
+        
+       
+    
+    # Create boxplot with enhanced visibility
+    bp = ax.boxplot(metric_data,
+                    vert=False,
+                    patch_artist=True,
+                    boxprops=dict(linewidth=1.5),
+                    whiskerprops=dict(linewidth=1.5),
+                    medianprops=dict(color='black', 
+                                   linewidth=2.0),  
+                    capprops=dict(linewidth=1.5),
+                    meanprops=dict(marker='^',      
+                                 markerfacecolor='green',
+                                 markeredgecolor='none',
+                                 markersize=10),
+                    showmeans=True,
+                    meanline=False,  
+                    showfliers=False,
+                    whis=1.5)
+    
+    # Set colors for boxes
+    for box, rt in zip(bp['boxes'], room_types):
+        box.set_facecolor(roomtype_color[rt])
+        box.set_edgecolor('black')
+    
+    ax.set_title(title, fontsize=14)
+    ax.set_xlim(xlim)
+    
+    # Set appropriate x-ticks based on the range
+    if metric == 'minimum_nights_avg_ntm':
+        ax.set_xticks(np.arange(0, 16, 3))
+    elif metric == 'maximum_nights_avg_ntm':
+        ax.set_xticks(np.arange(0, 151, 30))
+    else:
+        ax.set_xticks(np.arange(0, 366, 90))
+    
+    ax.set_yticks(range(1, len(room_types) + 1))
+    ax.set_yticklabels(room_types)
+    ax.grid(True, axis='x', linestyle='-', alpha=0.3)
+    
+    # Set x-label based on metric
+    if metric == 'availability_365':
+        ax.set_xlabel("Available Days", fontsize=10)
+    else:
+        ax.set_xlabel("Nights", fontsize=10)
+
+plt.tight_layout()
+
+# Save figure with high dpi for better quality
+plt.savefig('room_type_analysis.png', 
+            dpi=100,           
+            bbox_inches='tight', 
+            pad_inches=0.1)     
+
+
+plt.show()
+```
+
+```{python}
+<<<<<<< HEAD
+#| echo: false
+df = pd.read_csv("data/clean/20240614-London-listings.csv.gz")
+
+boros.crs
+water.crs
+green.crs
+```
+
+```{python}
+#| echo: false
+
+# Create a figure and axis
+fig, ax = plt.subplots(figsize=(10, 10))
+
+boros.plot(ax=ax, color='lightgrey', edgecolor='black', alpha=0.5)
+water.plot(ax=ax, color = 'blue', alpha = 0.5)
+green.plot(ax=ax, color = 'green', alpha = 0.5)
+
+legend_handles = [
+    mpatches.Patch(color='lightgrey', label='Boroughs'),
+    mpatches.Patch(color='blue', label='Water'),
+    mpatches.Patch(color='green', label='Greenspaces')]
+
+ax.legend(handles=legend_handles)
+
+
+plt.title('London Borough Map with Blue and Green Spaces')
+
+plt.show()
+```
+
+Here I am removing the water and green spaces from the Boroughs as these areas won't have any AirBnb listings them and would be a better representation when we calculate the listing density.
+
+```{python}
+#| echo: false
+
+list(boros)
+
+boros_wo_water = boros.difference(water.union_all())
+boros_wo_water_green = boros_wo_water.difference(green.union_all())
+
+new_boros = gpd.GeoDataFrame(geometry=boros_wo_water_green, crs=boros.crs)
+
+new_boros['area'] = new_boros.geometry.area/1000000
+
+new_boros = new_boros.merge(boros[['NAME', 'GSS_CODE', 'HECTARES']], left_index=True, right_index=True, how='left')
+new_boros = new_boros.rename(columns = {'HECTARES' : 'OLD_HECTARES'})
+
+new_boros = new_boros[['NAME', 'GSS_CODE', 'OLD_HECTARES', 'area', 'geometry']]
+
+print(new_boros.head())
+```
+
+Checking the final London Borough map after removing the green and blue spaces.
+
+```{python}
+#| echo: false
+new_boros.plot( edgecolor='white', alpha=0.5)
+```
+
+Ploted the listings on the new London Borough map to check the spatial distribution of the Airbnb property listings. 
+
+```{python}
+#| echo: false
+
+geometry = gpd.points_from_xy(df['longitude'], df['latitude'])
+abnb = gpd.GeoDataFrame (df, geometry = geometry, crs="EPSG:4326")
+
+if new_boros.crs != abnb.crs:
+    abnb = abnb.to_crs(new_boros.crs)
+
+fig, ax = plt.subplots(figsize=(20, 20))
+
+new_boros.plot(ax=ax, edgecolor='white', alpha=0.5)
+abnb.plot(ax=ax, color='red', markersize=5, alpha=0.2, label='Airbnb Listings')
+
+ax.legend()
+
+plt.title('Airbnb Listings Over Boroughs')
+plt.show()
+```
+
+Spatial join of the listings using the points (longitude, latitude) of the listings and the borough map
+
+```{python}
+#| echo: false
+
+joined = gpd.sjoin(abnb, new_boros, how="inner", predicate="within")
+
+listing_counts = joined.groupby('NAME').size().reset_index(name='listing_count')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+```{python}
+#| echo: false
+
+new_boros['area'] = pd.to_numeric(new_boros['area'], errors='coerce')# Earlier area dtype was object, converted it to float as it was causing sorting problems in listing_density
+
+new_boros['listing_density'] = new_boros['listing_count']/new_boros['area']
+```
+
+The thematic map of Airbnb listing density highlights a clear concentration of listings in central London. Remarkably, 65% of all Airbnb listings (as of 2024) are located within just 11 central boroughs, out of a total of 32 boroughs. This spatial clustering reflects the central area's strong appeal to tourists and its proximity to key attractions and amenities.
+
+At first glance, this concentration might not seem alarming. However, the rise in Airbnb listings over the years tells a more concerning story.
+
+```{python}
+#| echo: false
+
+clip_water = water.clip(boros.union_all())
+
+fig, ax = plt.subplots(figsize=(20, 20))
+
+new_boros.plot(ax=ax, 
+               column='listing_density', 
+               cmap='OrRd',  # Choose a color map
+               edgecolor='white',  # Color of the borders
+               legend=True,  # Show legend
+               legend_kwds={'label': "Listings Density", 'orientation': "horizontal"})
+clip_water.plot(ax=ax, color = 'blue', alpha = 0.15)
+green.plot(ax=ax, color = 'green', alpha = 0.15)
+
+plt.title('Thematic Map of Listings Density')
+plt.show()
+```
+
+```{python}
+#| echo: false
+sort_boros = new_boros.sort_values(by='listing_density', ascending = False)
+
+print(sort_boros[['NAME', 'listing_count', 'area', 'listing_density']])
+```
+
+Westminster hosts nearly 11.5% of all Airbnb listings in London, meaning that more than one-tenth of the city’s short-term rentals are concentrated within a single borough. This disproportionate share can be attributed to Westminster's status as a hub for London's most popular tourist attractions. Property owners are capitalizing on this high tourist demand by converting their properties into short-term rentals, often prioritizing immediate profitability over long-term rental stability.
+
+```{python}
+#| echo: false
+
+new_boros['listing_percent'] = (new_boros['listing_count']/new_boros['listing_count'].sum())*100
+new_boros['listing_percent'] = new_boros['listing_percent'].round(2)
+
+print(new_boros[['NAME','listing_percent']])
+```
+
+Here we wanted to analyze when the listing was uploaded on the Airbnb website, then analyze the rate of change of increase in the listings over the years, But unfortunately, we dont have the listing date, so instead we have used host_since. This will not give us an accurate result and there are many hosts which have multiple properties. But with the given dataset, we are using host_since as the listing date and ignore the fact that many hosts have multiple properties for moment. 
+
+```{python}
+#| echo: false
+
+print(len(df['host_id']))
+print(df['host_id'].nunique())
+
+abnb_2010 = abnb[abnb['host_since'] < '2010-01-01']
+abnb_2015 = abnb[abnb['host_since'] < '2015-01-01']
+abnb_2020 = abnb[abnb['host_since'] < '2020-01-01']
+
+print(f"Number of listings in London till 2010: {len(abnb_2010)}")
+print(f"Number of listings in London till 2015: {len(abnb_2015)}")
+print(f"Number of listings in London till 2020: {len(abnb_2020)}")
+print(f"Number of listings in London till 2024: {len(abnb)}")
+```
+
+```{python}
+#| echo: false
+
+joined_2010 = gpd.sjoin(abnb_2010, new_boros, how="inner", predicate="within")
+
+listing_counts = joined_2010.groupby('NAME').size().reset_index(name='listing_count_2010')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+```{python}
+#| echo: false
+
+joined_2015 = gpd.sjoin(abnb_2015, new_boros, how="inner", predicate="within")
+
+listing_counts = joined_2015.groupby('NAME').size().reset_index(name='listing_count_2015')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+```{python}
+#| echo: false
+
+joined_2020 = gpd.sjoin(abnb_2020, new_boros, how="inner", predicate="within")
+
+listing_counts = joined_2020.groupby('NAME').size().reset_index(name='listing_count_2020')
+
+new_boros = new_boros.merge(listing_counts, on='NAME', how='left')
+```
+
+Converting Nan values to 0 
+
+```{python}
+#| echo: false
+
+new_boros[['listing_count_2010', 'listing_count_2015', 'listing_count_2020', 'listing_count']] = new_boros[['listing_count_2010', 'listing_count_2015', 'listing_count_2020', 'listing_count']].fillna(0)
+```
+
+Here, we are calculating the percentage of rate of increase of listings over 5 year time period from 2010-2015, 2015-2020, and 2024-25
+
+```{python}
+#| echo: false
+
+new_boros['listing_percent_change_2015'] = ((new_boros['listing_count_2015']-new_boros['listing_count_2010'])/new_boros['listing_count_2015'].sum())*100
+new_boros['listing_percent_change_2015'] = new_boros['listing_percent_change_2015'].round(2)
+
+new_boros['listing_percent_change_2020'] = ((new_boros['listing_count_2020']-new_boros['listing_count_2015'])/new_boros['listing_count_2020'].sum())*100
+new_boros['listing_percent_change_2020'] = new_boros['listing_percent_change_2020'].round(2)
+
+new_boros['listing_percent_change_2025'] = ((new_boros['listing_count']-new_boros['listing_count_2020'])/new_boros['listing_count'].sum())*100
+new_boros['listing_percent_change_2025'] = new_boros['listing_percent_change_2025'].round(2)
+```
+
+The graph highlights a significant boom in Airbnb listings across Central London, particularly in areas such as Westminster, Camden, Lambeth, and Southwark. The data reveals that Airbnb listings have consistently increased over the years, with no borough showing negative growth during any of the observed time periods. This trend suggests that properties are continuously being converted into short-term Airbnb rentals, while the reverse — converting Airbnb listings back to long-term rentals — is virtually non-existent.
+
+This surge in short-term rental listings has led to a concentration of Airbnb properties in Central London, creating a concerning trend. Property owners observing this market shift may increasingly feel incentivized to convert their properties to short-term rentals, drawn by the potential for higher revenue. Consequently, the supply of long-term rental properties decreases, while rents for the remaining long-term rentals rise due to the competitive rental market. This scenario places additional financial strain on tenants who may no longer afford rising rents, ultimately forcing them to move to outer boroughs. Over time, this dynamic contributes to gentrification in Central London, where affordability is drastically reduced, and lower-income residents are pushed out.
+
+The data also shows emerging growth in Airbnb listings in outer boroughs such as Ealing, Barnet, and Croydon. This indicates a gradual outward expansion of the short-term rental market. As property owners in these areas recognize the revenue potential of Airbnb, they may also begin converting long-term rental properties into short-term rentals, exacerbating the issue further.
+
+The proliferation of short-term rentals poses several challenges for communities:
+
+1. Housing Affordability: The increase in short-term rentals reduces the supply of long-term rental properties, driving up rents and making housing less affordable for local residents.
+2. Community Disruption: Short-term rentals typically lack long-term occupants, preventing the establishment of stable and cohesive communities. Areas dominated by short-term rentals often experience a floating population, undermining the sense of local identity which is important characterstic of for neighbourhoods. 
+
+```{python}
+#| echo: false
+
+fig, ax = plt.subplots(figsize=(12, 8))
+
+# Step 3: Prepare data for plotting
+# Set the index to borough names for easier plotting
+new_boros.set_index('NAME', inplace=False)
+
+# Step 4: Create bar graphs
+# Plotting the data for each year
+new_boros[['listing_percent_change_2015', 'listing_percent_change_2020', 'listing_percent_change_2025']].plot(kind='bar', ax=ax)
+
+# Step 5: Customize the plot
+ax.set_title('Listing Percent Change by Borough (2015, 2020, 2025)', fontsize=16)
+ax.set_xlabel('Boroughs', fontsize=12)
+ax.set_ylabel('Percent Change', fontsize=12)
+ax.legend(title='Year', fontsize=10)
+ax.grid(axis='y')
+
+# Step 6: Show the plot
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| echo: false
+
+mean_prices = joined.groupby('NAME')['price'].mean().reset_index()
+mean_prices.columns = ['borough', 'mean_listing_price']
+mean_prices['mean_listing_price'] = mean_prices['mean_listing_price'].round(2)
+
+mean_prices = mean_prices.sort_values(by ='mean_listing_price', ascending = False)
+
+print(mean_prices)
+print(sort_boros[['NAME', 'listing_count', 'listing_density']])
+=======
+import plotly.express as px
+import contextily as ctx
+
+# Drop rows with missing price values
+df = df.dropna(subset=['price'])
+
+# Create the scatter mapbox plot
+fig = px.scatter_mapbox(
+    df,
+    lon=df['longitude'],
+    lat=df['latitude'],
+    color=df['property_type'],  # Color markers by property type
+    size=df['price'],  # Size markers by price
+    hover_name=df['name'],
+    hover_data={'price': True, 'availability_365': True, 'host_neighbourhood': True},
+    zoom=10,
+    height=900,
+    title='Airbnb Listings in London'
+)
+
+# Update layout to use Stamen Toner style (black and white)
+fig.update_layout(mapbox_style="carto-positron")
+
+# Customize margins
+fig.update_layout(margin={"r":0, "t":50, "l":0, "b":10})
+
+# Show the plot
+fig.show()
+>>>>>>> 38f4d29dfa96229ea32b1fda9936311883eb6e36
+```
+
+:::
+
+## 7. Drawing on your previous answers, and supporting your response with evidence (*e.g.* figures, maps, EDA/ESDA, and simple statistical analysis/models drawing on experience from, e.g., CASA0007), how *could* the InsideAirbnb data set be used to inform the regulation of Short-Term Lets (STL) in London? 
+
+```{python}
+#| echo: false
+
+westminster_boro = joined[joined['NAME'] == 'Westminster']
+print(westminster_boro.head())
+```
+
+```{python}
+#| echo: false
+
+geometry_westminster = gpd.points_from_xy(westminster_boro['longitude'], westminster_boro['latitude'])
+westminster_bnb = gpd.GeoDataFrame (westminster_boro, geometry = geometry_westminster, crs="EPSG:4326")
+
+westminster_boundary = new_boros[new_boros['NAME'] == 'Westminster']
+westminster_bg = boros[boros['NAME'] == 'Westminster']
+
+westminster_boundary = westminster_boundary.to_crs(westminster_bnb.crs)
+westminster_bg = westminster_bg.to_crs(westminster_bnb.crs)
+
+fig, ax = plt.subplots(figsize=(20, 20))
+
+# Plot the Westminster boundary
+westminster_bg.plot(ax=ax, color = 'lightgrey', edgecolor = 'black', alpha = 0.3)
+westminster_boundary.plot(ax=ax, color='lightblue', edgecolor='white')
+
+# Plot the Airbnb listings
+westminster_bnb.plot(ax=ax, marker='o', color='red', markersize=10, alpha=0.2)  # Adjust markersize and alpha as needed
+
+# Add labels and title
+ax.set_title("Airbnb Listings in Westminster")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+ax.legend()
+
+plt.show()
+```
+
+```{python}
+#| echo: false
+
+fig, ax = plt.subplots(figsize=(20, 20))
+
+westminster_boundary.plot(ax=ax, color='lightblue', edgecolor='white')
+sns.kdeplot(x=westminster_bnb['longitude'], y=westminster_bnb['latitude'],
+            cmap="Reds", fill=True, thresh=0.02, ax=ax, alpha = 0.4)
+
+ax.set_title("Density of Airbnb Listings in Westminster (KDE)")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+
+plt.show()
+```
+
+Westminster, being one of the most famous boroughs in London for its tourist attractions, hosts an overwhelming number of Airbnb listings — 9,504 in total. Analyzing the spatial distribution of these listings reveals four significant clusters that effectively span the entire borough. This clustering indicates that short-term rentals dominate Westminster's housing market, leaving little room for long-term rental stability.
+
+Key Insights -
+1. Presence of Duplicate Hosts:
+The data shows that within each cluster, there are numerous properties with duplicate host IDs. For instance, Cluster 3 alone has 415 properties managed by duplicate hosts. This trend suggests that property owners are capitalizing on Westminster's tourist market and its proximity to key services. Instead of renting properties for long-term use — which typically comes with more stable but lower revenue — hosts are converting multiple properties into short-term lets to maximize profits (even though risk is higher, but higher risk => higher reward).
+
+2. Decreased Housing Affordability:
+In Westminster and the neighboring districts, the practice of renting out several short-term properties has made housing affordability problems worse. Rents for the few long-term rental homes that are still available have increased, making them unaffordable for the typical renter, while long-term renting possibilities have declined. Short-term rental growth pushes lower-income tenants out of central neighborhoods, which fuels gentrification.
+
+3. Airbnb Hosts' as an "Occupation":
+Platforms like Airbnb were initially created as a side gig that let users rent out extra rooms or second residences. Nonetheless, in Westminster, professional property managers now rent several apartments all year round, making short-term rentals the main source of income for hosts. This change interferes with the development of long-term, stable communities in addition to decreasing the supply of affordable housing.
+
+```{python}
+coords = np.array(list(zip(westminster_bnb.geometry.x, westminster_bnb.geometry.y)))
+
+# Apply K-Means clustering
+n_clusters = 4  # Set the desired number of clusters
+kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto') #n_init added to remove warning
+westminster_bnb['cluster'] = kmeans.fit_predict(coords)
+
+# Plotting
+fig, ax = plt.subplots(figsize=(20, 20))
+
+# Plot the Westminster background and boundary
+westminster_boundary.plot(ax=ax, color='lightblue', edgecolor='white')
+
+# Plot the clusters
+for cluster in range(n_clusters):
+    cluster_points = westminster_bnb[westminster_bnb['cluster'] == cluster]
+    cluster_points.plot(ax=ax, marker='o', markersize=10, label=f"Cluster {cluster}")
+
+# Plot cluster centers
+centers = kmeans.cluster_centers_
+ax.scatter(centers[:, 0], centers[:, 1], marker='x', s=200, color='black', label='Cluster Centers')
+
+# Add labels, title, and legend
+ax.set_title(f"Airbnb Listings in Westminster (K-Means Clustering, {n_clusters} Clusters)")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+ax.legend()
+
+plt.show()
+```
+
+```{python}
+#| echo: false
+print(westminster_bnb['cluster'].head())
+
+duplicate_counts = (
+    westminster_bnb.groupby(['cluster', 'host_id'])
+    .size()  # Count occurrences of each host_id in each cluster
+    .reset_index(name='count'))
+
+duplicates_per_cluster = duplicate_counts[duplicate_counts['count'] > 1]
+
+duplicate_summary = duplicates_per_cluster.groupby('cluster').size().reset_index(name='duplicate_host_count')
+
+print(duplicate_summary)
+unique_hosts = westminster_bnb['host_id'].nunique()
+
+print(f'Number of unique hosts: {unique_hosts}')
+```
+
+## Proposed Policy Recommendations:
+To regulate the impact of short-term rentals in high-density areas like Westminster, Camden, and other boroughs experiencing similar trends, we propose the following policy framework:
+
+1. Cap on Short Term Let and Compulsory Long Term Lets:
+Limit the maximum number of short-term let nights to 90 per year per property.
+Ensure that properties rented as short-term lets must also be rented as long-term lets for at least double (double is an arbitrary number, it can be 1.5x, 1.75x, etc.) the number of short-term nights (e.g., 180 nights).
+Long-term rents during these periods should be comparatively lower than short-term Airbnb prices, ensuring affordability for tenants.
+
+2. Strategic Short-Term Letting:
+By imposing such a cap, property owners would need to strategize when to list properties as short-term rentals (e.g., during peak tourist seasons like summer and winter breaks) while fulfilling their obligation to offer long-term rental options during off-seasons. This would strike a balance between tourism demand and housing stability.
+
+While outside the scope of this analysis, a more robust taxation system for short-term rentals could ensure these properties contribute fairly, which can be then used to improve the infrastructure or maybe even provide subsizdized housing or help tenants with their rents. 
+
+
+
+## Sustainable Authorship Tools
+
+Using the Terminal in Docker, you compile the Quarto report using `quarto render <group_submission_file>.qmd`.
+
+Your QMD file should automatically download your BibTeX and CLS files and any other required files. If this is done right after library loading then the entire report should output successfully.
+
+Written in Markdown and generated from [Quarto](https://quarto.org/). Fonts used: [Spectral](https://fonts.google.com/specimen/Spectral) (mainfont), [Roboto](https://fonts.google.com/specimen/Roboto) (<span style="font-family:Sans-Serif;">sansfont</span>) and [JetBrains Mono](https://fonts.google.com/specimen/JetBrains%20Mono) (`monofont`). 
+
+## References
