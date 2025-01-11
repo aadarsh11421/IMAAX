@@ -380,6 +380,11 @@ The maximum stay duration suggests entire homes/apartments are targeting longer-
 
 ```{python}
 #| echo: false
+
+#6.1.1 "Room Type Proportion and Stay Duration Distribution
+#| echo: false
+
+#6.1.1 "Room Type Proportion and Stay Duration Distribution
 # define the room types in desired order
 room_types = ['Entire home/apt', 'Private room', 'Shared room', 'Hotel room']
 
@@ -476,9 +481,41 @@ plt.savefig('room_type_analysis.png', dpi=100, bbox_inches='tight', pad_inches=0
 plt.show()
 ```
 
+#6.2
+
+```{python}
+#6.1.2
+#1-Proportion of Superhosts by Host Category Map
+# Categorize hosts based on host_listings_count
+def categorize_hosts(listings_count):
+    if listings_count == 1:
+        return 'Single-property host'
+    elif 2 <= listings_count <= 5:
+        return 'Mid-scale host'
+    else:
+        return 'Commercial host'
+# Apply the categorization to the DataFrame
+df['host_category'] = df['host_listings_count'].apply(categorize_hosts)
+# Calculate the proportion of host_is_superhost for each host category
+superhost_proportion = df.groupby(['host_category', 'host_is_superhost']).size().unstack().fillna(0)
+superhost_proportion = superhost_proportion.div(superhost_proportion.sum(axis=1), axis=0)
+# Visualize the proportions using a stacked bar chart
+import matplotlib.pyplot as plt
+superhost_proportion.plot(kind='bar', stacked=True, figsize=(10, 6), color=['skyblue', 'orange'])
+plt.title('Proportion of Superhosts by Host Category')
+plt.xlabel('Host Category')
+plt.ylabel('Proportion')
+plt.legend(title='Superhost', loc='upper right')
+plt.show()
+```
+
+```{python}
+#7.1 map
+```
+
 ```{python}
 import plotly.express as px
-import contextily as ctx
+import plotly.io as pio  # For exporting the figure as an image
 
 # Drop rows with missing price values
 df = df.dropna(subset=['price'])
@@ -501,7 +538,11 @@ fig = px.scatter_mapbox(
 fig.update_layout(mapbox_style="carto-positron")
 
 # Customize margins
+fig.update_layout(mapbox_style="carto-positron")
 fig.update_layout(margin={"r":0, "t":50, "l":0, "b":10})
+
+pio.write_image(fig, "airbnb_listings11_london.png", width=1200, height=900)
+
 
 # Show the plot
 fig.show()
