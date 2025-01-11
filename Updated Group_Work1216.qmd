@@ -191,7 +191,7 @@ na_summary = na_summary[na_summary['Missing Count'] > 0].sort_values(by='Missing
 
 ```{python}
 #| echo: false
-#| results: hide
+
 # store these ro#| ws to drop problem rows(with to many NA)
 probs = df.isnull().sum(axis=1)
 #print(type(probs))       
@@ -371,7 +371,9 @@ Thirdly, there's the impact of commercial exploitation of this data. Companies u
 
 ### Airbnb: Moving Beyond Home Sharing? - Through Host Behavior and Categorization
 
-The charts reveal Airbnb's shift from home-sharing to a commercialized short-term rental market. The proportion bar chart shows entire homes/apartments dominate (60%), while private rooms (35%) and shared/hotel rooms (5%) play minor roles, reflecting a professionalized market.
+1. Room Type Distribution: Entire homes dominate at 60%, significantly higher than private rooms (35%) and shared/hotel rooms (5%), reflecting a shift toward market professionalization.
+2. Stay Duration: Entire homes cater to longer stays, while private/shared rooms target shorter visits due to space constraints.
+3. Availability Trends: Most listings are available for 90–270 days per year, aligning with professionally managed investment properties rather than casual home-sharing.
 
 ```{python}
 #| echo: false
@@ -473,9 +475,7 @@ plt.savefig('room_type_analysis.png', dpi=100, bbox_inches='tight', pad_inches=0
 plt.show()
 ```
 
-Superhost data highlights this further: Commercial and Mid-scale Hosts achieve higher Superhost proportions, indicating consistent, high-quality service tied to frequent bookings and professional management.
-
-The availability boxplots show most listings are bookable for 90–270 days, suggesting hosts plan well in advance, typical of investment properties rather than casual home-sharing. Longer stays in entire homes target extended guests, while private/shared rooms focus on shorter durations due to space limitations. Combined, these insights point to Airbnb's evolution into a business-focused platform, prioritizing profitability over its original community-based concept.
+4. Host Categories and Superhosts: Commercial hosts achieve higher Superhost proportions due to professional management and consistent quality; mid-scale hosts benefit from experience managing multiple properties, while single-property hosts offer personalized but less commercialized services.
 
 ```{python}
 #6.1.2 We categorize hosts by using how many listings they have； basically, over one listing will indicate a commercialized preference
@@ -799,7 +799,7 @@ print(sort_boros[['NAME', 'listing_count', 'listing_density']])
 
 ## 7. Drawing on your previous answers, and supporting your response with evidence (*e.g.* figures, maps, EDA/ESDA, and simple statistical analysis/models drawing on experience from, e.g., CASA0007), how *could* the InsideAirbnb data set be used to inform the regulation of Short-Term Lets (STL) in London? 
 
-### 
+
 
 ```{python}
 #| include: false
@@ -943,11 +943,10 @@ print(f'Number of unique hosts: {unique_hosts}')
 
 ### Focus on Camden: How Professional Hosts Influence Local Neighbourhoods?
 
-Camden, with its mix of residential neighborhoods and thriving commercial hubs, offers an ideal case study to explore the community-level impact of professional Airbnb hosts.  The borough’s high concentration of short-term rentals (STRs), particularly entire properties [@doi:10.1177/0042098020970865], reflects its strong housing demand, cultural attractions, and economic activity.
+Camden, with its mix of residential neighborhoods and thriving commercial hubs, offers an ideal case study to explore the community-level impact of professional Airbnb hosts. 
 
-Our analysis using reviews_per_month, a measure of property turnover, shows professional hosts dominate high-turnover areas like Camden Town and King’s Cross, which may reduce housing availability for long-term residents and increase pressure on the rental market [doi:10.1177/23998083211001836]. In contrast, non-professional hosts with single properties are more evenly distributed and play a more notable role in less commercial areas.
+Camden’s high concentration of entire-property STRs [@doi:10.1177/0042098020970865] in areas like Camden Town and King’s Cross reflects strong housing demand but increases rental pressures for long-term residents. Turnover analysis (reviews_per_month) shows professional hosts dominate high-demand areas, while single-property hosts are more evenly distributed, reducing housing strain in less commercial neighborhoods.
 
-As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
 
 ```{python}
 # 1load MSOA boundary to subset listing point
@@ -1079,7 +1078,7 @@ plt.savefig('camden_airbnb_active.png',
 plt.show()
 ```
 
-As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
+POI analysis reveals professional hosts cluster near business amenities (e.g., retail, food, entertainment), may indicating potential investment through visitor spending[@XU2021103670] but risking neighborhood instability.
 
 ```{python}
 # down load poi we need from osm map

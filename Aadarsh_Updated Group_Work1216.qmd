@@ -1,7 +1,8 @@
 ---
 bibliography: bio.bib
 csl: harvard-cite-them-right.csl
-title: IMAAX Group Project
+title: Analysing the Professionalism of Airbnb Host 
+subtitle: IMAAX Group Project
 execute:
   echo: false
   freeze: true
@@ -334,9 +335,6 @@ Taylor Higgins is working to build and organize the data and activist communitie
 
 
 
-
-
-
 ## 3. How was the InsideAirbnb data collected?  
 
 The data from this website was scraped directly from the Airbnb website – (https://www.airbnb.co.uk). The data from this website utilises information which is public and uses open-source technologies such as D3（Javascript library, Bootsrap, Python and Postgre SQL Open-source database to scrape the data 
@@ -345,33 +343,37 @@ This dataset collects various data from each listing including Country, City, ad
 
 ## 4. How does the method of collection impact the completeness and/or accuracy of the InsideAirbnb data set's representation of the process it seeks to study, and what wider issues does this raise?
 
-Based on Q3 these process made it possible for Researchers to generally collect data directly from Airbnb, whom operates globally [].There are several discussions about the in accuracies of the inside Airbnb Data for instance a study by Prentice, C. and Pawlicz, A. (2024), suggest that webscraped data is nonetheless not free from errors or inaccuracies for a range of reasons. For instance, some tourists may use different distribution channels or book directly, while listings may be faked, duplicated, simply an inactive test or be booked occasionally (Adamiak, 2022). Moreover, the web scraping process may be constrained by the platform provider (Alsudais, 2021), while analytics provided by organizations may be inflated due to their innate business interest (Dolnicar, 2019). However, these constraints and limitations are rarely reported in academic publications. Despite these limitations, Inside Airbnb's data is widely used for research and advocacy purposes. It provides valuable insights into the impact of short-term rentals on housing markets and communities. However, researchers and data scientists should be aware of these limitations.  
+Based on Q3, these processes made it possible for researchers to collect data directly from Airbnb, which operates globally []. Discussions about inaccuracies in InsideAirbnb data exist. For instance, Prentice, C. and (@RePEc:taf:rcitxx:v:25:y:2022:i:19:p:3131-3149) suggest web-scraped data is not free from errors for various reasons. Some tourists use other booking channels or book directly, and listings may be faked, duplicated, inactive tests, or occasionally booked (@RePEc:taf:rcitxx:v:25:y:2022:i:19:p:3131-3149). The web-scraping process can also be constrained by the platform provider (@Alsudais2020IncorrectDI), while analytics provided by organizations may be inflated due to business interests (@vonbriel2021evolution). These constraints and limitations are rarely reported in academic publications. Despite this, InsideAirbnb's data is widely used for research and advocacy, providing insights into short-term rentals’ impacts on housing markets and communities. Researchers and data scientists must remain aware of these limitations.
 
-1. Incomplete Listings: Not all Airbnb listings are publicly accessible, and some hosts may choose to keep their listings private, leading to gaps in the data. 
+1. Incomplete  Listings: Not all Airbnb listings are publicly accessible; some hosts keep  listings private, leading to data gaps.
+2. Data  Quality: The accuracy depends on hosts' listings. Outdated or inaccurate  information can skew results.
+3. Bias:  Data may be biased toward popular or higher-rated listings, as these are  reviewed and updated more frequently.
 
-2. Data Quality: The accuracy of the data depends on the accuracy of the listings provided by hosts. Inaccurate or outdated information can skew the results. 
+The broader issues include the need for comprehensive and accurate data collection, alongside ethical considerations when using scraped data. Ensuring data quality and representativeness is crucial for informed housing and tourism policies.
 
-3. Bias: The data may be biased towards more popular or higher-rated listings, as these are more likely to be reviewed and updated frequently. 
 
-The wider issues raised by these limitations include the need for more comprehensive and accurate data collection methods, as well as the ethical considerations of using scraped data. Ensuring data quality and representativeness is crucial for making informed decisions and policies related to housing and tourism. 
 
 ## 5. What ethical considerations does the use of the InsideAirbnb data raise? 
 
-The neutrality thesis claims that technological artifacts have no inherent values, politics, or consequences. technology is neither inherently good nor inherently bad. It is rather the human agency of those using the technology, which is responsible for the outcomes and consequently, for the technology’s social and political implications. In other words, according to the neutrality thesis, what matters is how we as individuals or as a society use technology (Pitt, 2014). 
+The neutrality thesis claims that technological artifacts have no inherent values, politics, or consequences. Technology is neither inherently good nor bad; it is the human agency of those using the technology that determines outcomes and its social and political implications (@PittJosephC.2014DKP). In other words, what matters is how individuals or society use technology.
 
-Looking at the morality of the usage of insideAirbnb data more broadly, decisions regarding technologies’ design, their use, and the contexts in which they are embedded can have not only ethical but also political consequences (Feenberg, 2002; Introna, 2007; Sclove, 1995; Winner, 1980). 
+Looking at the morality of using InsideAirbnb data, decisions regarding technologies’ design, use, and contexts can have ethical and political consequences (@alma990010275270204761; @IntronaLucasD.2005Deai; @Jasanoff_1996; @WinnerLangdon1980DAHP). 
 
-Firstly, using InsideAirbnb data raises questions about who has the right to access and use the platform’s data. While the website collects data by scraping Airbnb's public information - a practice that violates Airbnb's terms of service (Stringam, Gerdes and Anderson, 2023), does so to enable important public interest research, such as reports to help us understand how short-term rentals affect our communities. 
+1. Access Rights: InsideAirbnb raises questions about who can access and use its data. While the site scrapes Airbnb's public data—a practice violating Airbnb's terms of service (StringamBetsy2023LaEI)—it does so to support public interest research, such as understanding short-term rentals’ impacts on communities.
 
-Secondly, there are significant privacy concerns. Although the information scraped is publicly visible on Airbnb's website, it contains personal details about hosts and guests through reviews and listings. When this data is collected and used for purposes beyond what users originally intended, it raises important privacy questions - even if the information was voluntarily shared on the platform. 
+2. Privacy  Concerns: Although Airbnb’s information is publicly visible, it contains  personal details about hosts and guests in reviews and listings. Using  this data for unintended purposes raises privacy issues, even if users  voluntarily shared it.
 
-Thirdly, there's the impact of commercial exploitation of this data. Companies use Inside Airbnb data to provide market analysis services, helping hosts optimize their pricing and operations (Scassa, 2019). While this creates new business opportunities, it could worsen housing affordability problems by making short-term rentals more profitable. 
+3. Commercial  Exploitation: Companies use InsideAirbnb data for market analysis, helping  hosts optimize pricing and operations (scassaOwnershipControlPublicly2019). While this creates  new business opportunities, it can worsen housing affordability by making  short-term rentals more profitable.
+
+
 
 ## 6. With reference to the InsideAirbnb data (*i.e.* using numbers, figures, maps, and descriptive statistics), what does an analysis of Hosts and Listing types suggest about the nature of Airbnb lets in London? 
 
 ### Airbnb: Moving Beyond Home Sharing? - Through Host Behavior and Categorization
 
-The charts reveal Airbnb's shift from home-sharing to a commercialized short-term rental market. The proportion bar chart shows entire homes/apartments dominate (60%), while private rooms (35%) and shared/hotel rooms (5%) play minor roles, reflecting a professionalized market.
+1. Room Type Distribution: Entire homes dominate at 60%, significantly higher than private rooms (35%) and shared/hotel rooms (5%), reflecting a shift toward market professionalization.
+2. Stay Duration: Entire homes cater to longer stays, while private/shared rooms target shorter visits due to space constraints.
+3. Availability Trends: Most listings are available for 90–270 days per year, aligning with professionally managed investment properties rather than casual home-sharing.
 
 ```{python}
 #| echo: false
@@ -473,9 +475,7 @@ plt.savefig('room_type_analysis.png', dpi=100, bbox_inches='tight', pad_inches=0
 plt.show()
 ```
 
-Superhost data highlights this further: Commercial and Mid-scale Hosts achieve higher Superhost proportions, indicating consistent, high-quality service tied to frequent bookings and professional management.
-
-The availability boxplots show most listings are bookable for 90–270 days, suggesting hosts plan well in advance, typical of investment properties rather than casual home-sharing. Longer stays in entire homes target extended guests, while private/shared rooms focus on shorter durations due to space limitations. Combined, these insights point to Airbnb's evolution into a business-focused platform, prioritizing profitability over its original community-based concept.
+4. Host Categories and Superhosts: Commercial hosts achieve higher Superhost proportions due to professional management and consistent quality; mid-scale hosts benefit from experience managing multiple properties, while single-property hosts offer personalized but less commercialized services.
 
 ```{python}
 #6.1.2 We categorize hosts by using how many listings they have； basically, over one listing will indicate a commercialized preference
@@ -800,7 +800,6 @@ print(sort_boros[['NAME', 'listing_count', 'listing_density']])
 
 ## 7. Drawing on your previous answers, and supporting your response with evidence (*e.g.* figures, maps, EDA/ESDA, and simple statistical analysis/models drawing on experience from, e.g., CASA0007), how *could* the InsideAirbnb data set be used to inform the regulation of Short-Term Lets (STL) in London? 
 
-### 
 
 ```{python}
 #| include: false
@@ -834,7 +833,7 @@ fig.update_layout(margin={"r":0, "t":50, "l":0, "b":10})
 fig.show()
 ```
 
-### Focus on Westminster: Analyzing the Tourist Borugh
+### Focus on Westminster: Exploitation of Property Listings
 
 ```{python}
 #| echo: false
@@ -945,11 +944,9 @@ Westminster, a major tourist hub, hosts almost 10,000 Airbnb listings, with four
 
 ### Focus on Camden: How Professional Hosts Influence Local Neighbourhoods?
 
-Camden, with its mix of residential neighborhoods and thriving commercial hubs, offers an ideal case study to explore the community-level impact of professional Airbnb hosts.  The borough’s high concentration of short-term rentals (STRs), particularly entire properties [@doi:10.1177/0042098020970865], reflects its strong housing demand, cultural attractions, and economic activity.
+Camden, with its mix of residential neighborhoods and thriving commercial hubs, offers an ideal case study to explore the community-level impact of professional Airbnb hosts. 
 
-Our analysis using reviews_per_month, a measure of property turnover, shows professional hosts dominate high-turnover areas like Camden Town and King’s Cross, which may reduce housing availability for long-term residents and increase pressure on the rental market [doi:10.1177/23998083211001836]. In contrast, non-professional hosts with single properties are more evenly distributed and play a more notable role in less commercial areas.
-
-As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
+Camden’s high concentration of entire-property STRs [@doi:10.1177/0042098020970865] in areas like Camden Town and King’s Cross reflects strong housing demand but increases rental pressures for long-term residents. Turnover analysis (reviews_per_month) shows professional hosts dominate high-demand areas, while single-property hosts are more evenly distributed, reducing housing strain in less commercial neighborhoods.
 
 ```{python}
 # 1load MSOA boundary to subset listing point
@@ -1081,7 +1078,7 @@ plt.savefig('camden_airbnb_active.png',
 plt.show()
 ```
 
-As shown in the POI count analysis, professional hosts are also clustered near key business amenities, particularly retail food establishments, and entertainment venues, indicating potential investment through visitor spending[@XU2021103670]. However, this economic benefit raises concerns about housing pressures, neighborhood stability, and cohesion.
+POI analysis reveals professional hosts cluster near business amenities (e.g., retail, food, entertainment), may indicating potential investment through visitor spending[@XU2021103670] but risking neighborhood instability.
 
 ```{python}
 # down load poi we need from osm map
